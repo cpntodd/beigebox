@@ -29,7 +29,7 @@ LockstepManager::~LockstepManager()
 
 // ── Init ─────────────────────────────────────────────────────
 
-bool LockstepManager::InitHost(uint16_t port)
+bool LockstepManager::InitHost(uint16_t port, int playerCount, int playoutDelay)
 {
     socket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_ == INVALID_SOCKET) return false;
@@ -53,19 +53,21 @@ bool LockstepManager::InitHost(uint16_t port)
     ackedFrame_ = 0;
     oldestUnacked_ = 0;
     receivedUpTo_ = 0;
+    playerCount_ = (playerCount >= 2 && playerCount <= kMaxPlayers) ? playerCount : 2;
+    kPlayoutDelay_ = (playoutDelay >= 1 && playoutDelay <= 20) ? playoutDelay : 3;
 
-    SDL_Log("Lockstep: hosting on port %u", port);
+    SDL_Log("Lockstep: hosting on port %u for %d players (playout delay: %d frames)",
+        port, playerCount_, kPlayoutDelay_);
     return true;
 }
 
-bool LockstepManager::InitClient(const std::string& hostIP, uint16_t port)
+bool LockstepManager::InitClient(const std::string& hostIP, uint16_t port, int playoutDelay)
 {
     socket_ = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_ == INVALID_SOCKET) return false;
 
     MakeNonBlocking();
 
-    // Register the host as our only peer
     peers_[0].addr = inet_addr(hostIP.c_str());
     peers_[0].port = port;
     peers_[0].lastAckedFrame = 0;
@@ -73,7 +75,10 @@ bool LockstepManager::InitClient(const std::string& hostIP, uint16_t port)
 
     connected_ = true;
     currentFrame_ = 0;
-    SDL_Log("Lockstep: connected to %s:%u", hostIP.c_str(), port);
+    kPlayoutDelay_ = (playoutDelay >= 1 && playoutDelay <= 20) ? playoutDelay : 3;
+
+    SDL_Log("Lockstep: connected to %s:%u (playout delay: %d frames)",
+        hostIP.c_str(), port, kPlayoutDelay_);
     return true;
 }
 
@@ -81,6 +86,21 @@ void LockstepManager::Shutdown()
 {
     if (socket_ >= 0) { closesocket(socket_); socket_ = -1; }
     connected_ = false;
+}
+
+bool LockstepManager::AddPeer(uint32_t ipAddr, uint16_t port)
+{
+    if (peerCount_ >= kMaxPlayers - 1) return false; // -1 for self
+    for (int i = 0; i < peerCount_; ++i)
+        if (peers_[i].addr == ipAddr && peers_[i].port == port) return true; // already added
+    peers_[peerCount_].addr = ipAddr;
+    peers_[peerCount_].port = port;
+    peers_[peerCount_].lastAckedFrame = 0;
+    peerCount_++;
+    SDL_Log("Lockstep: peer added (%u.%u.%u.%u:%u) — total: %d",
+        (ipAddr >> 24) & 0xFF, (ipAddr >> 16) & 0xFF,
+        (ipAddr >> 8) & 0xFF, ipAddr & 0xFF, port, peerCount_);
+    return true;
 }
 
 // ── Tick ─────────────────────────────────────────────────────

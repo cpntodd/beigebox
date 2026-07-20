@@ -30,4 +30,8 @@ void WorldToScreen(int tileX, int tileY, int& screenX, int& screenY);
 // Returns the tile under the cursor (integer truncation).
 void ScreenToWorld(int screenX, int screenY, int& tileX, int& tileY);
 
+// Calculate how many tiles are visible given screen dimensions.
+// Useful for Hor+ widescreen: wider screens see more tiles.
+void VisibleTiles(int screenW, int screenH, int& tilesX, int& tilesY);
+
 } // namespace beigebox

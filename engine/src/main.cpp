@@ -41,10 +41,27 @@ int main(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
+    // ── Get native desktop resolution for widescreen support ─
+    SDL_DisplayMode dm;
+    int targetW = 1024, targetH = 768;
+    if (SDL_GetDesktopDisplayMode(0, &dm) == 0)
+    {
+        targetW = dm.w;
+        targetH = dm.h;
+        SDL_Log("Native resolution: %dx%d @ %dHz", dm.w, dm.h, dm.refresh_rate);
+    }
+
     SDL_Window* window = SDL_CreateWindow("BeigeBox — Playable Prototype",
-        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-    if (!window) { SDL_Log("Window failed: %s", SDL_GetError()); SDL_Quit(); return EXIT_FAILURE; }
+        SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+        targetW, targetH,
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED);
+    if (!window) {
+        SDL_Log("Window failed, falling back to 1024x768: %s", SDL_GetError());
+        window = SDL_CreateWindow("BeigeBox — Playable Prototype",
+            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1024, 768,
+            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+        if (!window) { SDL_Quit(); return EXIT_FAILURE; }
+    }
 
     // ── GL Context ─────────────────────────────────────────
     SDL_GLContext glCtx = SDL_GL_CreateContext(window);

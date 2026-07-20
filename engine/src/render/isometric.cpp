@@ -30,4 +30,14 @@ void ScreenToWorld(int screenX, int screenY, int& tileX, int& tileY)
     tileY = (ry - rx) / 2;
 }
 
+void VisibleTiles(int screenW, int screenH, int& tilesX, int& tilesY)
+{
+    // Each tile diamond spans TILE_W × TILE_H pixels.
+    // Horizontally: tiles are spaced TILE_HW (32px) apart.
+    // Vertically: tiles are spaced TILE_HH (16px) apart.
+    // Add 2 extra tiles for overscan margin.
+    tilesX = (screenW / TILE_HW) + 2;
+    tilesY = (screenH / TILE_HH) + 2;
+}
+
 } // namespace beigebox

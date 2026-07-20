@@ -8,8 +8,8 @@
 //   - Playout delay buffer (3 frames / ~100ms)
 //   - Each packet contains all unacked inputs
 //
-// For 8-player LAN: each peer sends inputs to all others.
-// Bandwidth: ~6 bits per input × 30 Hz × 8 players ≈ 180 bytes/s
+// For up to 16 players: each peer sends inputs to all others.
+// Bandwidth: ~6 bits per input × 30 Hz × 16 players ≈ 360 bytes/s
 // ─────────────────────────────────────────────────────────────
 #pragma once
 
@@ -47,10 +47,12 @@ struct PlayerInput
 };
 
 // ── Frame Input (all players) ────────────────────────────────
+static constexpr int kMaxPlayers = 16;
+
 struct FrameInput
 {
     uint32_t frame = 0;
-    PlayerInput inputs[8];  // up to 8 players
+    PlayerInput inputs[kMaxPlayers];
 };
 
 // ── Lockstep Manager ─────────────────────────────────────────
@@ -62,8 +64,10 @@ public:
 
     // ── Configuration ────────────────────────────────────────
     // Initialize as host (player 0) or client connecting to host.
-    bool InitHost(uint16_t port);
-    bool InitClient(const std::string& hostIP, uint16_t port);
+    // playerCount: total players in the session (2-16)
+    // playoutDelay: frames to buffer (3=LAN, 5-8=internet)
+    bool InitHost(uint16_t port, int playerCount = 2, int playoutDelay = 3);
+    bool InitClient(const std::string& hostIP, uint16_t port, int playoutDelay = 3);
 
     void Shutdown();
 
@@ -87,6 +91,11 @@ public:
 
     // Number of peers connected.
     int PeerCount() const { return peerCount_; }
+    int PlayerCount() const { return playerCount_; }
+    int PlayoutDelay() const { return kPlayoutDelay_; }
+
+    // Add a peer (host only). Returns false if max players reached.
+    bool AddPeer(uint32_t ipAddr, uint16_t port);
 
 private:
     struct Peer {
@@ -110,7 +119,8 @@ private:
     uint32_t ackedFrame_    = 0;    // highest frame acked by all peers
 
     // Playout delay: buffer inputs for smooth delivery
-    static constexpr int kPlayoutDelay = 3;  // frames (~100ms at 30Hz)
+    int kPlayoutDelay_ = 3;  // frames (~100ms at 30Hz), configurable
+    int playerCount_ = 2;
     std::vector<FrameInput> receivedInputs_; // indexed by frame
     uint32_t receivedUpTo_ = 0;
 
@@ -119,7 +129,7 @@ private:
     uint16_t localPort_ = 0;
     bool connected_ = false;
     int peerCount_ = 0;
-    Peer peers_[8];
+    Peer peers_[kMaxPlayers];
 
     void MakeNonBlocking();
     void CloseSocket();
