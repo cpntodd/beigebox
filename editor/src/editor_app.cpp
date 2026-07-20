@@ -39,6 +39,7 @@
 #include "panels/sound_manager.h"
 #include "panels/unit_templates.h"
 #include "panels/script_editor.h"
+#include "panels/entity_editor.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 #include "settings.h"
@@ -157,6 +158,7 @@ int main(int argc, char* argv[])
     beigebox::SoundManager    soundManager;
     beigebox::UnitTemplateManager unitTemplates;
     beigebox::ScriptEditor    scriptEditor(lua);
+    beigebox::EntityEditor    entityEditor(lua, viewportRenderer, thawGrid);
     unitTemplates.Load("unit_templates.json");
 
     // JSON-RPC server — logs through the AI Chat panel
@@ -290,6 +292,7 @@ int main(int argc, char* argv[])
         projectExplorer.Draw();
         soundManager.Draw();
         scriptEditor.Draw();
+        entityEditor.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
