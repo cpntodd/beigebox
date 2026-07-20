@@ -149,8 +149,9 @@ void MenuBuilder::DrawPalette() {
         ImGui::PushID((int)t);
         std::string label = std::string(WidgetIcon(t)) + "##" + WidgetTypeName(t);
 
-        // Highlight selected tool
-        if (selectedTool_ == (int)t)
+        // Highlight selected tool (capture bool before button may change it)
+        bool isSel = (selectedTool_ == (int)t);
+        if (isSel)
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
 
         if (ImGui::Button(label.c_str(), ImVec2(40, 30))) {
@@ -159,7 +160,7 @@ void MenuBuilder::DrawPalette() {
             Log(std::string("Tool selected: ") + WidgetTypeName(t));
         }
 
-        if (selectedTool_ == (int)t)
+        if (isSel)
             ImGui::PopStyleColor();
 
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", WidgetTypeName(t));
