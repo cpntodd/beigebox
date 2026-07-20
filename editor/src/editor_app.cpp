@@ -44,6 +44,7 @@
 #include "panels/level_editor.h"
 #include "panels/menu_builder.h"
 #include "panels/faction_editor.h"
+#include "panels/build_manager.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 #include "settings.h"
@@ -167,6 +168,7 @@ int main(int argc, char* argv[])
     beigebox::LevelEditor    levelEditor;
     beigebox::MenuBuilder    menuBuilder;
     beigebox::FactionEditor  factionEditor;
+    beigebox::BuildManager   buildManager;
     unitTemplates.Load("unit_templates.json");
 
     // JSON-RPC server — logs through the AI Chat panel
@@ -192,6 +194,7 @@ int main(int argc, char* argv[])
     menuBar.SetSpriteRegistry(&spriteRegistry);
     menuBar.SetUndoManager(&undoManager);
     menuBar.onQuit = [&]() { running = false; };
+    menuBar.onExportGame = [&]() { buildManager.Open(); };
     menuBar.onNewProject = [&]() {
         // Clear ECS and reset to default
         ecs.clear();
@@ -305,6 +308,7 @@ int main(int argc, char* argv[])
         levelEditor.Draw();
         menuBuilder.Draw();
         factionEditor.Draw();
+        buildManager.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();

@@ -55,7 +55,6 @@ void FactionEditor::Draw()
     {
         if (ImGui::BeginTabItem("Faction")) { DrawFactionTab(); ImGui::EndTabItem(); }
         if (ImGui::BeginTabItem("Tech Tree")) { DrawTechTreeTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Build/Export")) { DrawBuildTab(); ImGui::EndTabItem(); }
         ImGui::EndTabBar();
     }
 
@@ -433,45 +432,6 @@ void FactionEditor::DrawTechGraph(FactionDef& faction)
     ImGui::TextDisabled("Drag nodes to arrange. Right-click for context menu.");
 }
 
-// ── Build/Export Tab ────────────────────────────────────────
-
-void FactionEditor::DrawBuildTab()
-{
-    ImGui::Text("Build & Export Manager");
-    ImGui::Separator();
-
-    ImGui::InputText("Output Path", buildOutputPath_, sizeof(buildOutputPath_));
-    ImGui::InputText("Version", buildVersion_, sizeof(buildVersion_));
-
-    ImGui::Checkbox("Linux", &buildLinux_);
-    ImGui::SameLine();
-    ImGui::Checkbox("Windows (cross)", &buildWindows_);
-
-    ImGui::Separator();
-    ImGui::Text("Package contents:");
-    ImGui::BulletText("beigebox_runtime (executable)");
-    ImGui::BulletText("assets/ (sprites, sounds, music, scripts)");
-    ImGui::BulletText("data/ (units, buildings, factions, scenarios)");
-    ImGui::BulletText("ui/ (menus)");
-    ImGui::BulletText("launch.sh (Linux) / launch.bat (Windows)");
-    ImGui::BulletText("README.txt");
-
-    ImGui::Separator();
-    if (ImGui::Button("Build & Export", ImVec2(160, 40)))
-        DoBuild();
-
-    ImGui::SameLine();
-    if (ImGui::Button("Generate Launch Script Only"))
-    {
-        std::string script = GenerateLaunchScript();
-        std::string path = std::string(buildOutputPath_) + "/launch.sh";
-        std::ofstream f(path);
-        f << script;
-        f.close();
-        Log("Generated: " + path);
-    }
-}
-
 // ═════════════════════════════════════════════════════════════
 // Faction I/O
 // ═════════════════════════════════════════════════════════════
@@ -617,85 +577,6 @@ void FactionEditor::RefreshFactionList()
     }
     closedir(d);
     std::sort(factionList_.begin(), factionList_.end());
-}
-
-// ═════════════════════════════════════════════════════════════
-// Build/Export
-// ═════════════════════════════════════════════════════════════
-
-std::string FactionEditor::GenerateLaunchScript() const
-{
-    std::string script = "#!/bin/sh\n";
-    script += "# M.A.D. Runtime Launcher — v" + std::string(buildVersion_) + "\n";
-    script += "cd \"$(dirname \"$0\")\"\n";
-    script += "export LD_LIBRARY_PATH=\"./lib:$LD_LIBRARY_PATH\"\n";
-    script += "exec ./beigebox_runtime \"$@\"\n";
-    return script;
-}
-
-void FactionEditor::DoBuild()
-{
-    std::string dest(buildOutputPath_);
-    std::string cmd = "rm -rf " + dest + " && mkdir -p " + dest;
-
-    // Create directory structure
-    mkdir(dest.c_str(), 0755);
-    std::string subdirs[] = {"/assets", "/assets/sprites", "/assets/sounds",
-        "/assets/music", "/assets/scripts", "/data", "/data/units",
-        "/data/buildings", "/data/heroes", "/data/factions",
-        "/scenarios", "/ui", "/ui/menus"};
-    for (auto& sd : subdirs)
-    {
-        std::string full = dest + sd;
-        mkdir(full.c_str(), 0755);
-    }
-
-    // Copy runtime executable
-    std::string srcExe = rootPath_ + "/build/engine/beigebox_runtime";
-    std::string dstExe = dest + "/beigebox_runtime";
-    std::ifstream exeIn(srcExe, std::ios::binary);
-    std::ofstream exeOut(dstExe, std::ios::binary);
-    if (exeIn.good() && exeOut.good())
-    {
-        exeOut << exeIn.rdbuf();
-        chmod(dstExe.c_str(), 0755);
-        Log("Copied runtime executable.");
-    }
-    else
-        Log("Warning: could not copy runtime (build first).");
-
-    // Copy asset directories
-    auto copyDir = [&](const std::string& srcSub, const std::string& dstSub) {
-        std::string src = rootPath_ + "/" + srcSub;
-        std::string dst = dest + "/" + dstSub;
-        std::string cpCmd = "cp -r " + src + "/* " + dst + "/ 2>/dev/null";
-        system(cpCmd.c_str());
-    };
-
-    copyDir("assets/sprites", "assets/sprites");
-    copyDir("assets/sounds", "assets/sounds");
-    copyDir("assets/music", "assets/music");
-    copyDir("assets/scripts", "assets/scripts");
-    copyDir("data", "data");
-    copyDir("scenarios", "scenarios");
-    copyDir("ui/menus", "ui/menus");
-
-    // Generate launch script
-    std::string script = GenerateLaunchScript();
-    std::string lp = dest + "/launch.sh";
-    std::ofstream lf(lp);
-    lf << script;
-    lf.close();
-    chmod(lp.c_str(), 0755);
-
-    // Version stamp
-    std::string vp = dest + "/VERSION";
-    std::ofstream vf(vp);
-    vf << buildVersion_ << "\n";
-    vf.close();
-
-    Log("Build complete: " + dest);
-    Log("  Run with: " + dest + "/launch.sh");
 }
 
 } // namespace beigebox

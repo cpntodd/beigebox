@@ -194,7 +194,9 @@ void MainMenuBar::DrawFileMenu()
         ImGui::Separator();
 
         if (ImGui::MenuItem("Export Game..."))
-            showExport_ = true;
+        {
+            if (onExportGame) onExportGame();
+        }
         ImGui::Separator();
 
         if (ImGui::BeginMenu("Git"))

@@ -90,7 +90,6 @@ private:
     // ── Tabs ─────────────────────────────────────────────────
     void DrawFactionTab();
     void DrawTechTreeTab();
-    void DrawBuildTab();
 
     // ── Tech tree graph ──────────────────────────────────────
     void DrawTechGraph(FactionDef& faction);
@@ -105,9 +104,7 @@ private:
     std::string FactionsDir() const;
     void Log(const std::string& msg);
 
-    // ── Build ────────────────────────────────────────────────
-    void DoBuild();
-    std::string GenerateLaunchScript() const;
+    // ── UI ───────────────────────────────────────────────────
 
     // ── State ────────────────────────────────────────────────
     AIChatPanel* aiChat_ = nullptr;
@@ -130,12 +127,6 @@ private:
     char  techCostBuf_[16]   = {};
     char  techTimeBuf_[16]   = {};
     char  unitAddBuf_[64]    = {};
-
-    // Build
-    char  buildOutputPath_[256] = "./dist/MAD_Export";
-    char  buildVersion_[32]     = "0.1.0";
-    bool  buildWindows_ = false;
-    bool  buildLinux_   = true;
 };
 
 } // namespace beigebox

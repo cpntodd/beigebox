@@ -45,6 +45,7 @@ public:
     VoidCallback onQuit;
     VoidCallback onResetLayout;
     VoidCallback onNewProject;
+    VoidCallback onExportGame;
 
 private:
     void DrawFileMenu();
