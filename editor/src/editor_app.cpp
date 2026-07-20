@@ -35,6 +35,7 @@
 #include "panels/asset_browser.h"
 #include "panels/event_debugger.h"
 #include "panels/viewport.h"
+#include "panels/project_explorer.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 
@@ -136,6 +137,8 @@ int main(int argc, char* argv[])
     // ── Viewport Panel ───────────────────────────────────────
     beigebox::ViewportPanel viewport(ecs, viewportRenderer, thawGrid, lua);
     viewport.SetUndoManager(&undoManager);
+
+    beigebox::ProjectExplorer projectExplorer;
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -263,6 +266,7 @@ int main(int argc, char* argv[])
         entityList.Draw();
         propGrid.Draw();
         viewport.Draw();
+        projectExplorer.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
