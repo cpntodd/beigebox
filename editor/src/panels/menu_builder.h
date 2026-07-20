@@ -172,6 +172,7 @@ private:
     float canvasScale_  = 0.4f;
     float canvasOffsetX_ = 0, canvasOffsetY_ = 0;
     int   canvasW_ = 1920, canvasH_ = 1080;
+    float zoomFactor_  = 1.0f;  // user scroll-wheel zoom (0.1–2.0)
 
     // UI state
     char  screenNameBuf_[64] = {};

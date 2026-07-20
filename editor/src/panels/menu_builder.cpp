@@ -98,13 +98,10 @@ void MenuBuilder::Draw() {
     if (ImGui::Button("Export")) showExportDialog_ = true;
     ImGui::Separator();
 
-    float avail = ImGui::GetContentRegionAvail().x;
     float palW = 52, hierW = 200;
-    float canvasW = avail - palW - hierW - 10;
-    if (canvasW < 100) canvasW = 100;
     ImGui::Columns(3, "##mbCols", false);
     ImGui::SetColumnWidth(0, palW);
-    ImGui::SetColumnWidth(1, canvasW);
+    // Column 1 auto-fills the remaining center space
     ImGui::SetColumnWidth(2, hierW);
     DrawPalette(); ImGui::NextColumn();
     DrawCanvas(); ImGui::NextColumn();
@@ -192,10 +189,13 @@ void MenuBuilder::DrawCanvas() {
     ImVec2 ca = ImGui::GetContentRegionAvail();
     float cw = ca.x - 4, ch = ca.y - 4;
     if (cw < 100) cw = 100; if (ch < 100) ch = 100;
-    if (cw < 100) cw = 100; if (ch < 100) ch = 100;
-    canvasScale_ = std::min(cw / screen_.screenW, ch / screen_.screenH);
+
+    // Scale: fit-to-view base × user zoom factor (scroll-wheel adjustable)
+    float baseScale = std::min(cw / screen_.screenW, ch / screen_.screenH);
+    canvasScale_ = baseScale * zoomFactor_;
     canvasW_ = (int)(screen_.screenW * canvasScale_);
     canvasH_ = (int)(screen_.screenH * canvasScale_);
+    // Always center canvas in available space
     canvasOffsetX_ = cp.x + (cw - canvasW_) / 2.0f;
     canvasOffsetY_ = cp.y + (ch - canvasH_) / 2.0f;
 
@@ -239,7 +239,8 @@ void MenuBuilder::DrawCanvas() {
     ImVec2 ip(canvasOffsetX_ + 4, canvasOffsetY_ + canvasH_ - 18);
     dl->AddText(ip, IM_COL32(100, 100, 120, 200),
         (std::to_string(screen_.screenW) + "x" + std::to_string(screen_.screenH)
-         + " | " + std::to_string(screen_.widgets.size()) + " widgets").c_str());
+         + " | " + std::to_string(screen_.widgets.size()) + " widgets"
+         + " | " + std::to_string((int)(zoomFactor_ * 100)) + "%").c_str());
     ImGui::EndChild();
 }
 
@@ -345,6 +346,13 @@ void MenuBuilder::HandleCanvasInput() {
     if (!inCanvas) { hoveredWidget_ = -1; return; }
     hoveredWidget_ = HitTest(mx, my);
     bool ctrl = ImGui::GetIO().KeyCtrl, shift = ImGui::GetIO().KeyShift;
+
+    // ── Scroll-wheel zoom (centered on canvas) ──────────
+    float wheel = ImGui::GetIO().MouseWheel;
+    if (wheel != 0.0f) {
+        zoomFactor_ += wheel * 0.1f;
+        zoomFactor_ = std::max(0.1f, std::min(2.0f, zoomFactor_));
+    }
 
     if (ImGui::IsMouseClicked(0)) {
         int hit = HitTest(mx, my);
