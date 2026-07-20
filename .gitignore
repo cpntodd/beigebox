@@ -46,6 +46,9 @@ imgui.ini
 # Generated map files
 *.ogm
 
+# Project save files (machine-specific)
+*.madproj
+
 # Save files
 *.sav
 
