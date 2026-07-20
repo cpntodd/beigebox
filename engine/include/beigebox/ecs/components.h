@@ -16,8 +16,6 @@
 namespace beigebox {
 
 // ── Transform ────────────────────────────────────────────────
-// World-space position in tile units (Q24.8 fixed-point).
-// Origin (0,0) is the top-left tile of the map.
 struct Transform
 {
     FixedPoint x;
@@ -25,7 +23,6 @@ struct Transform
 };
 
 // ── Health ───────────────────────────────────────────────────
-// Current and maximum health, both in Q24.8.
 struct Health
 {
     FixedPoint current;
@@ -33,23 +30,52 @@ struct Health
 };
 
 // ── Player ───────────────────────────────────────────────────
-// Ownership tag — which faction controls this entity.
-// factionId 0 = neutral / world.
 struct Player
 {
-    int factionId = 0;
+    int factionId = 0;  // 0 = neutral/world, 1+ = faction
 };
 
-// ── Velocity ─────────────────────────────────────────────────
-// Movement direction and speed for the movement system.
-struct Velocity
+// ── Movement ─────────────────────────────────────────────────
+// Target-based movement. The MovementSystem drives the entity
+// toward targetX/targetY at the given speed each tick.
+struct Movement
 {
-    FixedPoint dx;
-    FixedPoint dy;
+    FixedPoint targetX;
+    FixedPoint targetY;
+    FixedPoint speed;  // tiles per second, Q24.8
 };
+
+// ── Weapon ───────────────────────────────────────────────────
+struct Weapon
+{
+    FixedPoint damage;
+    FixedPoint range;      // max attack distance in tile units
+    int        damageType = 0;  // 0=kinetic, 1=thermal, 2=pure
+};
+
+// ── FactionResources ─────────────────────────────────────────
+// Per-faction economy. Typically attached to a singleton
+// "faction manager" entity.
+struct FactionResources
+{
+    FixedPoint salvage;
+    FixedPoint heat;
+};
+
+// ── HeatSource ───────────────────────────────────────────────
+// Marks an entity as emitting heat into the Thaw Grid.
+struct HeatSource
+{
+    FixedPoint radius;     // thaw radius in tile units
+    FixedPoint intensity;  // heat added per tick at center
+    uint32_t   sourceId = 0;
+};
+
+// ── Dead ─────────────────────────────────────────────────────
+// Tag component — entity is pending removal at end of tick.
+struct Dead {};
 
 // ── Renderable ───────────────────────────────────────────────
-// Hints for the renderer. For now, just a color.
 struct Renderable
 {
     float r = 1.0f;
@@ -57,4 +83,12 @@ struct Renderable
     float b = 1.0f;
 };
 
+// ── Velocity (legacy, kept for compatibility) ────────────────
+struct Velocity
+{
+    FixedPoint dx;
+    FixedPoint dy;
+};
+
 } // namespace beigebox
+

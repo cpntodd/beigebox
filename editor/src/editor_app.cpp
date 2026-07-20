@@ -17,13 +17,17 @@
 #include <entt/entt.hpp>
 
 #include "beigebox/ecs/components.h"
+#include "beigebox/ecs/systems.h"
 #include "beigebox/lua/lua_bridge.h"
 #include "beigebox/core/fixed_point.h"
+#include "beigebox/world/thaw_grid.h"
 
 #include "mcp/tool_registry.h"
 #include "mcp/tools.h"
+#include "mcp/json_rpc.h"
 #include "panels/entity_list.h"
 #include "panels/ai_chat.h"
+#include "panels/properties_grid.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -77,16 +81,27 @@ int main(int argc, char* argv[])
 
     // ── Engine Context ──────────────────────────────────────
     entt::registry ecs;
+    beigebox::ThawGrid thawGrid;
+    thawGrid.Init(32, 32);
+
     beigebox::LuaBridge lua;
     lua.Init(ecs);
+    lua.SetThawGrid(&thawGrid);
 
-    // ── MCP Tool Registry ───────────────────────────────────
+    // ── MCP Tool Registry + JSON-RPC Server ─────────────────
     beigebox::ToolRegistry tools(ecs, lua);
     beigebox::RegisterAllTools(tools);
 
     // ── Editor Panels ───────────────────────────────────────
     beigebox::EntityListPanel entityList(ecs, lua);
     beigebox::AIChatPanel     aiChat(tools);
+    beigebox::PropertiesGrid  propGrid(ecs);
+
+    // JSON-RPC server — logs through the AI Chat panel
+    beigebox::JsonRpcServer jsonRpc(tools);
+    jsonRpc.SetLogger([&](const std::string& msg) {
+        aiChat.AppendMessage("system", "[JSON-RPC] " + msg);
+    });
 
     // ── Seed: spawn a demo entity for the user to play with ─
     auto demoEntity = ecs.create();
@@ -129,7 +144,10 @@ int main(int argc, char* argv[])
                 running = false;
         }
 
-        // ── ECS Tick — fire OnTick for all scripted entities ──
+        // ── ECS Tick — systems + Lua events ──────────────────
+        beigebox::TickSystems(ecs);
+        thawGrid.Tick();
+
         ecs.view<entt::entity>().each([&](entt::entity entity) {
             if (lua.HasScript(entity, "OnTick"))
                 lua.FireEvent(entity, "OnTick");
@@ -145,6 +163,7 @@ int main(int argc, char* argv[])
 
         // ── Editor Panels ────────────────────────────────────
         entityList.Draw();
+        propGrid.Draw();
         aiChat.Draw();
 
         // ── Render ───────────────────────────────────────────

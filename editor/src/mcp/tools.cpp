@@ -12,6 +12,8 @@
 #include "beigebox/ecs/components.h"
 #include "beigebox/core/fixed_point.h"
 
+#include <sol/sol.hpp>
+
 #include <sstream>
 #include <cstdio>
 #include <cstdlib>
@@ -287,6 +289,76 @@ void RegisterAllTools(ToolRegistry& registry)
         "Manually fire an event on an entity (for testing).",
         "/fire_event entity=<id> [event=OnTick]",
         [&](const auto& p) { return FireEvent(p, registry); });
+
+    // ── Phase 5: Combat, Economy, Thaw tools ────────────────
+
+    registry.RegisterTool("deal_damage",
+        "Deal damage to an entity. Triggers OnTakeDamage, may kill.",
+        "/deal_damage entity=<id> amount=<raw_hp> [type=0]",
+        [&](const auto& p) -> std::string {
+            int id = ParseInt(ParamStr(p, "entity"), -1);
+            int amt = ParseInt(ParamStr(p, "amount"), 0);
+            if (id < 0) return std::string("Error: 'entity' required.\n");
+            auto entity = entt::entity(static_cast<uint32_t>(id));
+            if (!registry.Registry().valid(entity))
+                return std::string("Error: entity not found.\n");
+            auto& h = registry.Registry().get<Health>(entity);
+            h.current = h.current - FixedPoint(amt);
+            if (h.current.Raw() <= 0) {
+                h.current = FixedPoint::FromInt(0);
+                registry.Registry().emplace_or_replace<Dead>(entity);
+            }
+            registry.Lua().FireEvent(entity, "OnTakeDamage");
+            return "Dealt " + std::to_string(amt) + " damage to entity " + std::to_string(id) + ".\n";
+        });
+
+    registry.RegisterTool("give_salvage",
+        "Add salvage resources to a faction.",
+        "/give_salvage faction=<id> amount=<raw>",
+        [&](const auto& p) -> std::string {
+            int faction = ParseInt(ParamStr(p, "faction"), 1);
+            int amount = ParseInt(ParamStr(p, "amount"), 100);
+            auto& lua = registry.Lua();
+            sol::protected_function fn = lua.State()["Economy"]["GiveSalvage"];
+            if (fn.valid()) fn(faction, amount);
+            return "Gave " + std::to_string(amount) + " salvage to faction " + std::to_string(faction) + ".\n";
+        });
+
+    registry.RegisterTool("add_heat_source",
+        "Add a heat source to the thaw grid at tile coordinates.",
+        "/add_heat_source x=<tile> y=<tile> radius=<raw> intensity=<raw>",
+        [&](const auto& p) -> std::string {
+            int tx = ParseInt(ParamStr(p, "x"), 5);
+            int ty = ParseInt(ParamStr(p, "y"), 5);
+            int radius = ParseInt(ParamStr(p, "radius"), 3 * 256);
+            int intensity = ParseInt(ParamStr(p, "intensity"), 10 * 256);
+            auto& lua = registry.Lua();
+            sol::protected_function fn = lua.State()["Thaw"]["AddHeatSource"];
+            if (fn.valid()) {
+                uint32_t id = fn(tx, ty, radius, intensity);
+                return "Heat source " + std::to_string(id) + " added at (" +
+                       std::to_string(tx) + "," + std::to_string(ty) + ").\n";
+            }
+            return std::string("Error: Thaw grid not attached.\n");
+        });
+
+    registry.RegisterTool("spawn_unit",
+        "Spawn a new unit at tile coordinates.",
+        "/spawn_unit faction=<id> type=<Driller|HeatLamp> [x=<tile>] [y=<tile>]",
+        [&](const auto& p) -> std::string {
+            int faction = ParseInt(ParamStr(p, "faction"), 1);
+            std::string type = ParamStr(p, "type", "Driller");
+            int x = ParseInt(ParamStr(p, "x"), 5);
+            int y = ParseInt(ParamStr(p, "y"), 5);
+            auto& lua = registry.Lua();
+            sol::protected_function fn = lua.State()["Factory"]["SpawnUnit"];
+            if (fn.valid()) {
+                int eid = fn(faction, type, x * 256, y * 256);
+                return std::string("Spawned ") + type + " (entity " + std::to_string(eid) +
+                       ") for faction " + std::to_string(faction) + ".\n";
+            }
+            return std::string("Error: Factory API not available.\n");
+        });
 }
 
 } // namespace beigebox

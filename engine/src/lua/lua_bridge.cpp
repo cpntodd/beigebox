@@ -6,6 +6,7 @@
 #include "beigebox/lua/lua_bridge.h"
 #include "beigebox/ecs/components.h"
 #include "beigebox/core/fixed_point.h"
+#include "beigebox/world/thaw_grid.h"
 
 #include <SDL2/SDL.h>
 #include <cstdio>
@@ -35,8 +36,11 @@ bool LuaBridge::Init(entt::registry& registry)
 
     // ── Register C++ API namespaces ─────────────────────────
     RegisterTransformAPI();
-    // Future: RegisterCombatAPI();
-    // Future: RegisterWorldAPI();
+    RegisterCombatAPI();
+    RegisterOrdersAPI();
+    RegisterEconomyAPI();
+    RegisterFactoryAPI();
+    RegisterThawAPI();
 
     SDL_Log("LuaBridge: initialized (Lua %s)", LUA_VERSION);
     return true;
@@ -178,6 +182,298 @@ void LuaBridge::RegisterTransformAPI()
             FixedPoint dx = Abs(t1.x - t2.x);
             FixedPoint dy = Abs(t1.y - t2.y);
             return (dx + dy).Raw();
+        });
+}
+
+// ── Combat API Registration ──────────────────────────────────
+//
+// Exposes:
+//   Combat.DealDamage(target_id, amount_raw, damage_type)
+//   Combat.GetHealth(entity_id) -> current_raw, max_raw
+//   Combat.IsEnemy(e1, e2) -> bool
+//   Combat.GetEnemiesInRadius(entity_id, radius_raw) -> table {id=hp, ...}
+
+void LuaBridge::RegisterCombatAPI()
+{
+    auto combat = lua_.create_named_table("Combat");
+
+    // Combat.DealDamage(target_id, amount_raw, damage_type=0)
+    combat.set_function("DealDamage",
+        [this](int targetId, int amountRaw, sol::optional<int> damageType)
+        {
+            auto target = IDFromLua(targetId);
+            if (!registry_->valid(target) || !registry_->all_of<Health>(target))
+                return;
+
+            auto& health = registry_->get<Health>(target);
+            FixedPoint damage(amountRaw);
+            health.current = health.current - damage;
+            if (health.current.Raw() < 0)
+                health.current = FixedPoint::FromInt(0);
+
+            // If killed, tag as Dead
+            if (health.current.Raw() <= 0)
+                registry_->emplace_or_replace<Dead>(target);
+
+            // Fire OnTakeDamage event
+            FireEvent(target, "OnTakeDamage");
+        });
+
+    // Combat.GetHealth(entity_id) -> current_raw, max_raw
+    combat.set_function("GetHealth",
+        [this](int entityId) -> std::tuple<int, int>
+        {
+            auto entity = IDFromLua(entityId);
+            if (!registry_->valid(entity) || !registry_->all_of<Health>(entity))
+                return {0, 0};
+
+            auto& h = registry_->get<Health>(entity);
+            return {h.current.Raw(), h.max.Raw()};
+        });
+
+    // Combat.IsEnemy(e1, e2) -> bool
+    combat.set_function("IsEnemy",
+        [this](int e1Id, int e2Id) -> bool
+        {
+            auto e1 = IDFromLua(e1Id);
+            auto e2 = IDFromLua(e2Id);
+
+            auto* p1 = registry_->try_get<Player>(e1);
+            auto* p2 = registry_->try_get<Player>(e2);
+            if (!p1 || !p2) return false;
+            return p1->factionId != p2->factionId && p1->factionId > 0 && p2->factionId > 0;
+        });
+
+    // Combat.GetEnemiesInRadius(entity_id, radius_raw) -> {entity_id = hp_raw, ...}
+    combat.set_function("GetEnemiesInRadius",
+        [this](int entityId, int radiusRaw) -> sol::table
+        {
+            sol::table result = lua_.create_table();
+            auto center = IDFromLua(entityId);
+
+            if (!registry_->valid(center) || !registry_->all_of<Transform>(center))
+                return result;
+
+            auto& ct = registry_->get<Transform>(center);
+            auto* cp = registry_->try_get<Player>(center);
+            int myFaction = cp ? cp->factionId : 0;
+
+            FixedPoint radius(radiusRaw);
+
+            auto view = registry_->view<Transform, Health, Player>();
+            for (auto other : view)
+            {
+                if (other == center) continue;
+                auto& op = registry_->get<Player>(other);
+                if (op.factionId == myFaction || op.factionId == 0) continue;
+
+                auto& ot = registry_->get<Transform>(other);
+                FixedPoint dx = Abs(ct.x - ot.x);
+                FixedPoint dy = Abs(ct.y - ot.y);
+                FixedPoint dist = dx + dy;
+
+                if (dist <= radius)
+                {
+                    auto& oh = registry_->get<Health>(other);
+                    result[EntityToID(other)] = oh.current.Raw();
+                }
+            }
+
+            return result;
+        });
+}
+
+// ── Orders API Registration ──────────────────────────────────
+//
+// Exposes:
+//   Orders.MoveTo(entity_id, target_x_raw, target_y_raw)
+//   Orders.AttackTarget(entity_id, target_id)
+//   Orders.Stop(entity_id)
+
+void LuaBridge::RegisterOrdersAPI()
+{
+    auto orders = lua_.create_named_table("Orders");
+
+    // Orders.MoveTo(entity_id, target_x_raw, target_y_raw)
+    orders.set_function("MoveTo",
+        [this](int entityId, int targetXRaw, int targetYRaw)
+        {
+            auto entity = IDFromLua(entityId);
+            if (!registry_->valid(entity) || !registry_->all_of<Transform>(entity))
+                return;
+
+            FixedPoint tx(targetXRaw);
+            FixedPoint ty(targetYRaw);
+            FixedPoint defaultSpeed = FixedPoint::FromInt(2); // 2 tiles/sec
+
+            registry_->emplace_or_replace<Movement>(entity, tx, ty, defaultSpeed);
+        });
+
+    // Orders.AttackTarget(entity_id, target_id)
+    orders.set_function("AttackTarget",
+        [this](int entityId, int targetId)
+        {
+            auto entity = IDFromLua(entityId);
+            auto target = IDFromLua(targetId);
+
+            if (!registry_->valid(entity) || !registry_->valid(target))
+                return;
+            if (!registry_->all_of<Transform>(entity) || !registry_->all_of<Transform>(target))
+                return;
+
+            // Move to target position, then OnTakeDamage handles combat
+            auto& tt = registry_->get<Transform>(target);
+            registry_->emplace_or_replace<Movement>(entity, tt.x, tt.y,
+                FixedPoint::FromInt(3)); // faster when attacking
+        });
+
+    // Orders.Stop(entity_id)
+    orders.set_function("Stop",
+        [this](int entityId)
+        {
+            auto entity = IDFromLua(entityId);
+            if (registry_->valid(entity) && registry_->all_of<Movement>(entity))
+                registry_->remove<Movement>(entity);
+        });
+}
+
+// ── Economy API Registration ─────────────────────────────────
+//
+// Exposes:
+//   Economy.GiveSalvage(faction_id, amount_raw)
+//   Economy.SpendHeat(faction_id, amount_raw) -> bool
+
+void LuaBridge::RegisterEconomyAPI()
+{
+    auto economy = lua_.create_named_table("Economy");
+
+    // Find or create the faction's resource entity
+    auto getFactionEntity = [this](int factionId) -> entt::entity {
+        auto view = registry_->view<Player, FactionResources>();
+        for (auto e : view) {
+            if (registry_->get<Player>(e).factionId == factionId)
+                return e;
+        }
+        // Create faction resource entity if it doesn't exist
+        auto e = registry_->create();
+        registry_->emplace<Player>(e, factionId);
+        registry_->emplace<FactionResources>(e, FixedPoint::FromInt(0), FixedPoint::FromInt(0));
+        return e;
+    };
+
+    economy.set_function("GiveSalvage",
+        [this, getFactionEntity](int factionId, int amountRaw)
+        {
+            auto e = getFactionEntity(factionId);
+            auto& res = registry_->get<FactionResources>(e);
+            res.salvage = res.salvage + FixedPoint(amountRaw);
+        });
+
+    economy.set_function("SpendHeat",
+        [this, getFactionEntity](int factionId, int amountRaw) -> bool
+        {
+            auto e = getFactionEntity(factionId);
+            auto& res = registry_->get<FactionResources>(e);
+            FixedPoint cost(amountRaw);
+            if (res.heat >= cost)
+            {
+                res.heat = res.heat - cost;
+                return true;
+            }
+            return false;
+        });
+}
+
+// ── Factory API Registration ─────────────────────────────────
+//
+// Exposes:
+//   Factory.SpawnUnit(faction_id, unit_type_str, x_raw, y_raw) -> entity_id
+
+void LuaBridge::RegisterFactoryAPI()
+{
+    auto factory = lua_.create_named_table("Factory");
+
+    factory.set_function("SpawnUnit",
+        [this](int factionId, const std::string& unitType,
+               sol::optional<int> xRaw, sol::optional<int> yRaw) -> int
+        {
+            auto entity = registry_->create();
+            int px = xRaw.value_or(0);
+            int py = yRaw.value_or(0);
+
+            registry_->emplace<Transform>(entity, FixedPoint(px), FixedPoint(py));
+            registry_->emplace<Health>(entity,
+                FixedPoint::FromInt(100), FixedPoint::FromInt(100));
+            registry_->emplace<Player>(entity, factionId);
+
+            // Unit-type-specific stats (could load from data files later)
+            if (unitType == "Driller")
+            {
+                registry_->emplace<Weapon>(entity,
+                    FixedPoint::FromInt(15),   // damage
+                    FixedPoint::FromInt(2),    // range
+                    0);                         // kinetic
+            }
+            else if (unitType == "HeatLamp")
+            {
+                registry_->emplace<HeatSource>(entity,
+                    FixedPoint::FromInt(3),    // radius
+                    FixedPoint::FromInt(10),   // intensity
+                    0); // sourceId assigned by ThawGrid
+            }
+
+            return static_cast<int>(EntityToID(entity));
+        });
+}
+
+// ── Thaw API Registration ────────────────────────────────────
+//
+// Exposes:
+//   Thaw.GetHeatLevel(tile_x, tile_y) -> int (0-255)
+//   Thaw.AddHeatSource(tile_x, tile_y, radius_raw, intensity_raw) -> source_id
+//   Thaw.RemoveHeatSource(source_id)
+//   World.IsFrozen(tile_x, tile_y) -> bool
+//   World.IsBuildable(tile_x, tile_y) -> bool
+
+void LuaBridge::RegisterThawAPI()
+{
+    auto thaw = lua_.create_named_table("Thaw");
+    auto world = lua_.create_named_table("World");
+
+    thaw.set_function("GetHeatLevel",
+        [this](int tileX, int tileY) -> int
+        {
+            if (!thawGrid_) return 0;
+            return static_cast<int>(thawGrid_->GetHeat(tileX, tileY));
+        });
+
+    thaw.set_function("AddHeatSource",
+        [this](int tileX, int tileY, int radiusRaw, int intensityRaw) -> uint32_t
+        {
+            if (!thawGrid_) return 0;
+            return thawGrid_->AddHeatSource(tileX, tileY,
+                FixedPoint(radiusRaw), FixedPoint(intensityRaw));
+        });
+
+    thaw.set_function("RemoveHeatSource",
+        [this](uint32_t sourceId)
+        {
+            if (thawGrid_)
+                thawGrid_->RemoveHeatSource(sourceId);
+        });
+
+    world.set_function("IsFrozen",
+        [this](int tileX, int tileY) -> bool
+        {
+            if (!thawGrid_) return true;
+            return thawGrid_->IsFrozen(tileX, tileY);
+        });
+
+    world.set_function("IsBuildable",
+        [this](int tileX, int tileY) -> bool
+        {
+            if (!thawGrid_) return false;
+            return thawGrid_->IsBuildable(tileX, tileY);
         });
 }
 

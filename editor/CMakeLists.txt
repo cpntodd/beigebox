@@ -23,12 +23,11 @@ add_executable(mad_editor
     src/editor_app.cpp
     src/mcp/tool_registry.cpp
     src/mcp/tools.cpp
+    src/mcp/json_rpc.cpp
     src/panels/entity_list.cpp
     src/panels/ai_chat.cpp
+    src/panels/properties_grid.cpp
     ${IMGUI_SOURCES}
-    # ── Future sources added below ───────────────────────────
-    # src/panels/properties_grid.cpp
-    # src/panels/event_editor.cpp
 )
 
 # ── Include paths ────────────────────────────────────────────
@@ -45,4 +44,5 @@ target_link_libraries(mad_editor
         beigebox_engine
         SDL2::SDL2
         OpenGL::GL
+        nlohmann_json::nlohmann_json
 )

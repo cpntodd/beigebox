@@ -13,9 +13,11 @@
 
 #include "beigebox/core/fixed_point.h"
 #include "beigebox/ecs/components.h"
+#include "beigebox/ecs/systems.h"
 #include "beigebox/render/renderer.h"
 #include "beigebox/render/isometric.h"
 #include "beigebox/lua/lua_bridge.h"
+#include "beigebox/world/thaw_grid.h"
 
 #include <cstdlib>
 #include <cstdio>
@@ -60,8 +62,16 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
+    // ── Grid & Camera ───────────────────────────────────────
+    constexpr int GRID_W = 12;
+    constexpr int GRID_H = 12;
+
     // ── ECS World ───────────────────────────────────────────
     entt::registry registry;
+
+    // ── Thaw Grid ───────────────────────────────────────────
+    beigebox::ThawGrid thawGrid;
+    thawGrid.Init(GRID_W, GRID_H);
 
     // ── Lua Bridge ──────────────────────────────────────────
     beigebox::LuaBridge lua;
@@ -73,61 +83,44 @@ int main(int argc, char* argv[])
         SDL_Quit();
         return EXIT_FAILURE;
     }
+    lua.SetThawGrid(&thawGrid);
 
     // ── Spawn Test Entities ─────────────────────────────────
-    // Entity 1: A "Driller" unit at tile (5, 5)
     auto driller = registry.create();
     registry.emplace<beigebox::Transform>(driller,
-        beigebox::FixedPoint::FromInt(5),
-        beigebox::FixedPoint::FromInt(5));
+        beigebox::FixedPoint::FromInt(5), beigebox::FixedPoint::FromInt(5));
     registry.emplace<beigebox::Health>(driller,
-        beigebox::FixedPoint::FromInt(100),
-        beigebox::FixedPoint::FromInt(100));
+        beigebox::FixedPoint::FromInt(100), beigebox::FixedPoint::FromInt(100));
     registry.emplace<beigebox::Player>(driller, 1);
-    registry.emplace<beigebox::Renderable>(driller, 0.8f, 0.2f, 0.2f);
+    registry.emplace<beigebox::Weapon>(driller,
+        beigebox::FixedPoint::FromInt(15), beigebox::FixedPoint::FromInt(2), 0);
 
-    // Load an OnTick script that wanders the Driller
     lua.LoadScript(driller, "OnTick", R"lua(
         function OnTick(entity_id)
             local x, y = Transform.GetPosition(entity_id)
-            -- Simple patrol: move right across the map, wrap around
-            x = x + 8  -- ~0.03 tiles per tick in Q24.8
-            if x > 12 * 256 then
-                x = 0
-            end
+            x = x + 4
+            if x > 12 * 256 then x = 0 end
             Transform.SetPosition(entity_id, x, y)
         end
     )lua");
 
-    // Entity 2: A stationary "Building" at tile (8, 3)
     auto building = registry.create();
     registry.emplace<beigebox::Transform>(building,
-        beigebox::FixedPoint::FromInt(8),
-        beigebox::FixedPoint::FromInt(3));
+        beigebox::FixedPoint::FromInt(8), beigebox::FixedPoint::FromInt(3));
     registry.emplace<beigebox::Health>(building,
-        beigebox::FixedPoint::FromInt(500),
-        beigebox::FixedPoint::FromInt(500));
+        beigebox::FixedPoint::FromInt(500), beigebox::FixedPoint::FromInt(500));
     registry.emplace<beigebox::Player>(building, 1);
-    registry.emplace<beigebox::Renderable>(building, 0.2f, 0.4f, 0.8f);
 
-    // Load an OnTick script that logs distance to the Driller
-    lua.LoadScript(building, "OnTick", R"lua(
-        function OnTick(entity_id)
-            -- The Driller is entity 0 (first created)
-            local dist = Transform.GetDistance(entity_id, 0)
-            -- Just compute distance — the engine logs it from C++
-        end
-    )lua");
-    // Note: entity_id 0 is the Driller (entt::entity wraps to 0 for first entity)
+    // Thaw test: add a heat source near (6, 6)
+    thawGrid.AddHeatSource(6, 6,
+        beigebox::FixedPoint::FromInt(4),
+        beigebox::FixedPoint::FromInt(25));
 
     SDL_Log("ECS: entities spawned (Driller=%u, Building=%u)",
             static_cast<unsigned>(entt::to_integral(driller)),
             static_cast<unsigned>(entt::to_integral(building)));
 
     // ── Grid & Camera ───────────────────────────────────────
-    constexpr int GRID_W = 12;
-    constexpr int GRID_H = 12;
-
     int cameraX = 0;
     int cameraY = 0;
     constexpr int SCROLL_SPEED = 4;
@@ -166,9 +159,14 @@ int main(int argc, char* argv[])
         if (kb[SDL_SCANCODE_UP]    || kb[SDL_SCANCODE_W])  cameraY -= SCROLL_SPEED;
         if (kb[SDL_SCANCODE_DOWN]  || kb[SDL_SCANCODE_S])  cameraY += SCROLL_SPEED;
 
-        // ── ECS Update — fire OnTick for all scripted entities ──
-        registry.view<entt::entity>().each([&](entt::entity entity)
-        {
+        // ── ECS Systems ───────────────────────────────────────
+        beigebox::TickSystems(registry);
+
+        // ── Thaw Tick ────────────────────────────────────────
+        thawGrid.Tick();
+
+        // ── Fire Lua events ─────────────────────────────────
+        registry.view<entt::entity>().each([&](entt::entity entity) {
             if (lua.HasScript(entity, "OnTick"))
                 lua.FireEvent(entity, "OnTick");
         });

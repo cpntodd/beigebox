@@ -17,14 +17,23 @@ FetchContent_MakeAvailable(doctest)
 add_executable(beigebox_tests
     test_fixed_point.cpp
     test_lua_bridge.cpp
-    # ── Future test files added below ────────────────────────
-    # test_lockstep.cpp
+    test_combat_orders.cpp
+    test_thaw.cpp
+    test_jsonrpc.cpp
+    ${CMAKE_SOURCE_DIR}/editor/src/mcp/tool_registry.cpp
+    ${CMAKE_SOURCE_DIR}/editor/src/mcp/json_rpc.cpp
+)
+
+target_include_directories(beigebox_tests
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/editor/src
 )
 
 target_link_libraries(beigebox_tests
     PRIVATE
         beigebox_engine
         doctest::doctest
+        nlohmann_json::nlohmann_json
 )
 
 # ── Register with CTest ──────────────────────────────────────

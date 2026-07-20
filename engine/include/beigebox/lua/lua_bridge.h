@@ -37,8 +37,11 @@ public:
     // ── Lifecycle ────────────────────────────────────────────
     //
     // Initialize the Lua VM and register all C++ API bindings.
-    // Must be called before any LoadScript / FireEvent.
+    // Optionally attach a ThawGrid for the World/Thaw API.
     bool Init(entt::registry& registry);
+
+    // Attach (or detach) the ThawGrid for World/Thaw Lua API.
+    void SetThawGrid(class ThawGrid* grid) { thawGrid_ = grid; }
 
     // Destroy the Lua VM.
     void Shutdown();
@@ -72,19 +75,20 @@ public:
 
 private:
     // ── API Registration ─────────────────────────────────────
-    // Called during Init() to expose C++ functions to Lua.
     void RegisterTransformAPI();
-    // Future: void RegisterCombatAPI();
-    // Future: void RegisterWorldAPI();
+    void RegisterCombatAPI();
+    void RegisterOrdersAPI();
+    void RegisterEconomyAPI();
+    void RegisterFactoryAPI();
+    void RegisterThawAPI();
 
     // ── Internal Helpers ─────────────────────────────────────
-    //
-    // Convert entt::entity to Lua-friendly integer and back.
     static uint32_t EntityToID(entt::entity e) { return static_cast<uint32_t>(entt::to_integral(e)); }
     static entt::entity IDFromLua(int id) { return entt::entity(static_cast<uint32_t>(id)); }
 
     sol::state       lua_;
     entt::registry*  registry_ = nullptr;
+    class ThawGrid*  thawGrid_ = nullptr;
 
     // Per-entity, per-event Lua functions
     // Outer key: entity ID (uint32_t)

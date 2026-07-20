@@ -9,6 +9,8 @@ add_library(beigebox_engine STATIC
     src/render/isometric.cpp
     src/render/renderer.cpp
     src/lua/lua_bridge.cpp
+    src/ecs/systems.cpp
+    src/world/thaw_grid.cpp
     # ── Future sources added below ───────────────────────────
     # src/net/lockstep.cpp
 )
