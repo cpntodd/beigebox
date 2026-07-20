@@ -21,15 +21,14 @@ set(IMGUI_SOURCES
 
 add_executable(mad_editor
     src/editor_app.cpp
+    src/mcp/tool_registry.cpp
+    src/mcp/tools.cpp
+    src/panels/entity_list.cpp
+    src/panels/ai_chat.cpp
     ${IMGUI_SOURCES}
     # ── Future sources added below ───────────────────────────
-    # src/panels/entity_list.cpp
     # src/panels/properties_grid.cpp
     # src/panels/event_editor.cpp
-    # src/mcp/mcp_server.cpp
-    # src/mcp/tools/ecs_tools.cpp
-    # src/mcp/tools/lua_tools.cpp
-    # src/mcp/tools/world_tools.cpp
 )
 
 # ── Include paths ────────────────────────────────────────────

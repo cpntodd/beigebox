@@ -3,9 +3,8 @@
 // M.A.D. Editor — application entry point.
 //
 // Creates an SDL2 window with an OpenGL 3.1 context, initializes
-// Dear ImGui with docking, and runs the main editor loop.
-//
-// TODO: Phase 2 — full editor loop with panel layout, MCP server
+// Dear ImGui with docking, the ECS + Lua engine context, MCP
+// tool registry, and renders the Entity List + AI Chat panels.
 // ─────────────────────────────────────────────────────────────
 
 #include <SDL2/SDL.h>
@@ -14,6 +13,17 @@
 #include <imgui.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
+
+#include <entt/entt.hpp>
+
+#include "beigebox/ecs/components.h"
+#include "beigebox/lua/lua_bridge.h"
+#include "beigebox/core/fixed_point.h"
+
+#include "mcp/tool_registry.h"
+#include "mcp/tools.h"
+#include "panels/entity_list.h"
+#include "panels/ai_chat.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -27,7 +37,6 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    // GL 3.1 Core profile — maximum compatibility
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -36,7 +45,7 @@ int main(int argc, char* argv[])
         "M.A.D. Editor — Project M.A.D.",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         1280, 720,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_MAXIMIZED
     );
 
     if (!window)
@@ -48,7 +57,7 @@ int main(int argc, char* argv[])
 
     SDL_GLContext gl_context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, gl_context);
-    SDL_GL_SetSwapInterval(1); // vsync
+    SDL_GL_SetSwapInterval(1);
 
     // ── Dear ImGui Initialization ───────────────────────────
     IMGUI_CHECKVERSION();
@@ -56,9 +65,53 @@ int main(int argc, char* argv[])
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.ConfigWindowsMoveFromTitleBarOnly = true;
+
+    // Retro-styled editor
+    ImGui::StyleColorsDark();
+    ImGui::GetStyle().FrameRounding = 2.0f;
+    ImGui::GetStyle().WindowRounding = 4.0f;
 
     ImGui_ImplSDL2_InitForOpenGL(window, gl_context);
-    ImGui_ImplOpenGL3_Init("#version 130"); // GLSL 1.30 for GL 3.1
+    ImGui_ImplOpenGL3_Init("#version 130");
+
+    // ── Engine Context ──────────────────────────────────────
+    entt::registry ecs;
+    beigebox::LuaBridge lua;
+    lua.Init(ecs);
+
+    // ── MCP Tool Registry ───────────────────────────────────
+    beigebox::ToolRegistry tools(ecs, lua);
+    beigebox::RegisterAllTools(tools);
+
+    // ── Editor Panels ───────────────────────────────────────
+    beigebox::EntityListPanel entityList(ecs, lua);
+    beigebox::AIChatPanel     aiChat(tools);
+
+    // ── Seed: spawn a demo entity for the user to play with ─
+    auto demoEntity = ecs.create();
+    ecs.emplace<beigebox::Transform>(demoEntity,
+        beigebox::FixedPoint::FromInt(5),
+        beigebox::FixedPoint::FromInt(5));
+    ecs.emplace<beigebox::Health>(demoEntity,
+        beigebox::FixedPoint::FromInt(100),
+        beigebox::FixedPoint::FromInt(100));
+    ecs.emplace<beigebox::Player>(demoEntity, 1);
+    lua.LoadScript(demoEntity, "OnTick", R"lua(
+        function OnTick(entity_id)
+            local x, y = Transform.GetPosition(entity_id)
+            x = x + 4  -- drift slowly right
+            if x > 12 * 256 then x = 0 end
+            Transform.SetPosition(entity_id, x, y)
+        end
+    )lua");
+
+    aiChat.AppendMessage("system",
+        "Welcome to M.A.D. Editor v0.1.0\n"
+        "Type /help to see available tools.\n"
+        "Try: /create_entity faction=2 name=\"Cryo Walker\"\n"
+        "     /query_entities\n"
+        "     /write_script entity=1 event=OnInit code=\"function OnInit(id) Transform.SetPosition(id, 10*256, 3*256) end\"\n");
 
     // ── Main Editor Loop ────────────────────────────────────
     bool running = true;
@@ -76,28 +129,38 @@ int main(int argc, char* argv[])
                 running = false;
         }
 
-        // Start ImGui frame
+        // ── ECS Tick — fire OnTick for all scripted entities ──
+        ecs.view<entt::entity>().each([&](entt::entity entity) {
+            if (lua.HasScript(entity, "OnTick"))
+                lua.FireEvent(entity, "OnTick");
+        });
+
+        // ── ImGui Frame ──────────────────────────────────────
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        // ── Editor Panels ────────────────────────────────────
-        // TODO: Phase 2 — entity list, properties grid, event editor, AI chat
-        ImGui::ShowDemoWindow(); // temporary — remove in Phase 2
+        // ── Dockspace ────────────────────────────────────────
+        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-        // Render
+        // ── Editor Panels ────────────────────────────────────
+        entityList.Draw();
+        aiChat.Draw();
+
+        // ── Render ───────────────────────────────────────────
         ImGui::Render();
         SDL_GL_MakeCurrent(window, gl_context);
         glViewport(0, 0,
             static_cast<int>(io.DisplaySize.x),
             static_cast<int>(io.DisplaySize.y));
-        glClearColor(0.12f, 0.12f, 0.14f, 1.0f);
+        glClearColor(0.10f, 0.10f, 0.12f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
         SDL_GL_SwapWindow(window);
     }
 
     // ── Shutdown ─────────────────────────────────────────────
+    lua.Shutdown();
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
