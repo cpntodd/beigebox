@@ -34,6 +34,7 @@ add_executable(mad_editor
     src/panels/event_debugger.cpp
     src/panels/viewport.cpp
     src/panels/project_explorer.cpp
+    src/panels/sound_manager.cpp
     src/undo/undo_manager.cpp
     ${IMGUI_SOURCES}
 )

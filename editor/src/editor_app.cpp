@@ -36,6 +36,7 @@
 #include "panels/event_debugger.h"
 #include "panels/viewport.h"
 #include "panels/project_explorer.h"
+#include "panels/sound_manager.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 
@@ -139,6 +140,7 @@ int main(int argc, char* argv[])
     viewport.SetUndoManager(&undoManager);
 
     beigebox::ProjectExplorer projectExplorer;
+    beigebox::SoundManager    soundManager;
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -267,6 +269,7 @@ int main(int argc, char* argv[])
         propGrid.Draw();
         viewport.Draw();
         projectExplorer.Draw();
+        soundManager.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
