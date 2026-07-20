@@ -4,9 +4,9 @@
 // ─────────────────────────────────────────────────────────────
 
 #include "ai_chat.h"
+#include "../mcp/llm_client.h"
 
 #include <imgui.h>
-
 #include <sstream>
 #include <cstring>
 
@@ -81,10 +81,19 @@ void AIChatPanel::AppendMessage(const std::string& sender, const std::string& te
 
 void AIChatPanel::ExecuteCommand(const std::string& input)
 {
-    // ── Parse: /tool_name key=value key2=value2 ... ──────────
+    // ── Natural language → send to LLM ──────────────────────
     if (input.empty() || input[0] != '/')
     {
-        AppendMessage("system", "Commands start with '/'. Type /help for available tools.");
+        if (llm_)
+        {
+            SendToLlm(input);
+        }
+        else
+        {
+            AppendMessage("system",
+                "Type /help for available commands, or configure an AI provider\n"
+                "(AI → Configure Provider) to use natural language vibe-coding.");
+        }
         return;
     }
 
@@ -141,6 +150,114 @@ void AIChatPanel::ExecuteCommand(const std::string& input)
     // ── Execute ──────────────────────────────────────────────
     std::string result = tools_->Execute(toolName, params);
     AppendMessage("system", result);
+}
+
+// ── Natural Language → LLM ───────────────────────────────────
+
+void AIChatPanel::SendToLlm(const std::string& prompt)
+{
+    AppendMessage("system", "Thinking...");
+
+    // Capture `this` for callback — must be synchronous since LLM call blocks
+    llm_->Send(prompt,
+        // Response callback
+        [this](const std::string& response) {
+            // Check for TOOL: commands in the response
+            ExecuteToolCalls(response);
+        },
+        // Tool call callback — LLM requested a specific tool
+        [this](const std::string& toolName, const std::string& args) {
+            // Parse args string into ParamMap
+            ToolRegistry::ParamMap params;
+            std::istringstream iss(args);
+            std::string token;
+            while (iss >> token)
+            {
+                auto eq = token.find('=');
+                if (eq != std::string::npos)
+                {
+                    std::string key = token.substr(0, eq);
+                    std::string val = token.substr(eq + 1);
+                    if (val.size() >= 2 && val.front() == '"' && val.back() == '"')
+                        val = val.substr(1, val.size() - 2);
+                    params[key] = val;
+                }
+                else
+                    params[token] = "true";
+            }
+            std::string result = tools_->Execute(toolName, params);
+            AppendMessage("system", "> /" + toolName + " " + args + "\n" + result);
+        });
+}
+
+// Parse LLM response for TOOL: /tool_name args lines and execute them.
+void AIChatPanel::ExecuteToolCalls(const std::string& response)
+{
+    std::istringstream iss(response);
+    std::string line;
+    std::string displayText;
+    int toolsExecuted = 0;
+
+    while (std::getline(iss, line))
+    {
+        // Look for TOOL: /tool_name args
+        if (line.find("TOOL:") != std::string::npos || line.find("/") == 0)
+        {
+            // Extract tool call
+            std::string toolCall = line;
+            auto colonPos = toolCall.find("TOOL:");
+            if (colonPos != std::string::npos)
+                toolCall = toolCall.substr(colonPos + 5);
+            // Trim whitespace
+            while (!toolCall.empty() && toolCall[0] == ' ') toolCall.erase(0, 1);
+            while (!toolCall.empty() && toolCall.back() == ' ') toolCall.pop_back();
+
+            if (!toolCall.empty() && toolCall[0] == '/')
+            {
+                // Parse and execute
+                std::istringstream tiss(toolCall.substr(1));
+                std::string toolName;
+                tiss >> toolName;
+
+                ToolRegistry::ParamMap params;
+                std::string token;
+                while (tiss >> token)
+                {
+                    auto eq = token.find('=');
+                    if (eq != std::string::npos)
+                    {
+                        std::string key = token.substr(0, eq);
+                        std::string val = token.substr(eq + 1);
+                        if (val.size() >= 2 && val.front() == '"' && val.back() == '"')
+                            val = val.substr(1, val.size() - 2);
+                        params[key] = val;
+                    }
+                    else
+                        params[token] = "true";
+                }
+
+                if (tools_->HasTool(toolName))
+                {
+                    std::string result = tools_->Execute(toolName, params);
+                    displayText += "> /" + toolName + " → " + result;
+                    toolsExecuted++;
+                }
+                else
+                    displayText += line + "\n";
+            }
+            else
+                displayText += line + "\n";
+        }
+        else
+        {
+            displayText += line + "\n";
+        }
+    }
+
+    if (toolsExecuted > 0)
+        displayText += "\n(" + std::to_string(toolsExecuted) + " tool(s) executed)";
+
+    AppendMessage("system", displayText);
 }
 
 } // namespace beigebox

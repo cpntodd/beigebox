@@ -100,23 +100,46 @@ std::string LlmClient::BuildRequestBody(const std::string& userPrompt) const
     return json.str();
 }
 
-// ── HTTP POST (minimal, no libcurl dependency) ───────────────
+// ── HTTP POST — raw sockets for HTTP, curl for HTTPS ─────────
 
 std::string LlmClient::HttpPost(const std::string& url, const std::string& body) const
 {
-    // Parse host and port from URL
-    std::string host = "localhost";
-    int port = 11434;
-    std::string path = "/api/generate"; // Ollama default
-
-    // Simple URL parse: scheme://host:port/path
+    // Detect scheme
     auto schemeEnd = url.find("://");
     bool isHttps = (schemeEnd != std::string::npos && url.substr(0, schemeEnd) == "https");
+
+    // ── HTTPS: use curl via popen ────────────────────────────
+    if (isHttps)
+    {
+        std::string cmd = "curl -s -X POST \"" + url + "\"";
+        cmd += " -H \"Content-Type: application/json\"";
+        if (!apiKey_.empty())
+            cmd += " -H \"Authorization: Bearer " + apiKey_ + "\"";
+        cmd += " -d '" + body + "' 2>/dev/null";
+
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) return "Error: curl not available. Install curl for HTTPS support.";
+
+        std::string response;
+        char buf[4096];
+        while (fgets(buf, sizeof(buf), pipe))
+            response += buf;
+        int rc = pclose(pipe);
+
+        if (rc != 0 || response.empty())
+            return "Error: no response from LLM. Is the server running?";
+
+        return response;
+    }
+
+    // ── HTTP: raw sockets (for localhost Ollama) ─────────────
+    std::string host = "localhost";
+    int port = 11434;
+    std::string path = "/api/generate";
+
     size_t hostStart = (schemeEnd != std::string::npos) ? schemeEnd + 3 : 0;
     auto hostEnd = url.find(':', hostStart);
     auto pathStart = url.find('/', hostStart);
-
-    if (isHttps && port == 11434) port = 443; // HTTPS default
 
     if (hostEnd != std::string::npos && (pathStart == std::string::npos || hostEnd < pathStart))
     {

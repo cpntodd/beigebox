@@ -125,6 +125,7 @@ int main(int argc, char* argv[])
     menuBar.SetAIChat(&aiChat);
     assetBrowser.SetAIChat(&aiChat);
     eventDebugger.SetAIChat(&aiChat);
+    aiChat.SetLlmClient(&llmClient);
     eventDebugger.SetAIChat(&aiChat);
     menuBar.SetThawGrid(&thawGrid);
     menuBar.SetSpriteRegistry(&spriteRegistry);
