@@ -25,7 +25,7 @@ public:
                                                  const std::string& args)>;
 
     // ── Configuration ────────────────────────────────────────
-    enum class Provider { OpenAI, Anthropic, Ollama };
+    enum class Provider { OpenAI, Anthropic, Ollama, DeepSeek };
 
     void SetProvider(Provider p)     { provider_ = p; }
     void SetApiKey(const std::string& key) { apiKey_ = key; }

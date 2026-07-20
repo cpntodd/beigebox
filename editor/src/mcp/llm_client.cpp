@@ -74,7 +74,7 @@ std::string LlmClient::BuildRequestBody(const std::string& userPrompt) const
              << "\"stream\":false"
              << "}";
     }
-    else if (provider_ == Provider::OpenAI)
+    else if (provider_ == Provider::OpenAI || provider_ == Provider::DeepSeek)
     {
         json << "{"
              << "\"model\":\"" << model_ << "\","
@@ -109,13 +109,16 @@ std::string LlmClient::HttpPost(const std::string& url, const std::string& body)
     int port = 11434;
     std::string path = "/api/generate"; // Ollama default
 
-    // Simple URL parse: http://host:port/path
+    // Simple URL parse: scheme://host:port/path
     auto schemeEnd = url.find("://");
+    bool isHttps = (schemeEnd != std::string::npos && url.substr(0, schemeEnd) == "https");
     size_t hostStart = (schemeEnd != std::string::npos) ? schemeEnd + 3 : 0;
     auto hostEnd = url.find(':', hostStart);
     auto pathStart = url.find('/', hostStart);
 
-    if (hostEnd != std::string::npos && hostEnd < pathStart)
+    if (isHttps && port == 11434) port = 443; // HTTPS default
+
+    if (hostEnd != std::string::npos && (pathStart == std::string::npos || hostEnd < pathStart))
     {
         host = url.substr(hostStart, hostEnd - hostStart);
         port = std::stoi(url.substr(hostEnd + 1, pathStart - hostEnd - 1));

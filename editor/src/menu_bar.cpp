@@ -397,9 +397,35 @@ void MainMenuBar::DrawAIConfigDialog()
     if (ImGui::BeginPopupModal("AI Configuration", &showAIConfig_,
         ImGuiWindowFlags_AlwaysAutoResize))
     {
-        const char* providers[] = {"Ollama", "OpenAI", "Anthropic"};
-        ImGui::Combo("Provider", &providerIdx_, providers, 3);
+        const char* providers[] = {"Ollama", "OpenAI", "Anthropic", "DeepSeek"};
+        ImGui::Combo("Provider", &providerIdx_, providers, 4);
         ImGui::InputText("Endpoint", endpointBuf_, sizeof(endpointBuf_));
+
+        // Set smart defaults when switching providers
+        static int lastProvider = -1;
+        if (providerIdx_ != lastProvider)
+        {
+            lastProvider = providerIdx_;
+            switch (providerIdx_)
+            {
+            case 0: // Ollama
+                strcpy(endpointBuf_, "http://localhost:11434");
+                strcpy(modelBuf_, "llama3");
+                break;
+            case 1: // OpenAI
+                strcpy(endpointBuf_, "https://api.openai.com/v1/chat/completions");
+                strcpy(modelBuf_, "gpt-4o");
+                break;
+            case 2: // Anthropic
+                strcpy(endpointBuf_, "https://api.anthropic.com/v1/messages");
+                strcpy(modelBuf_, "claude-3-5-sonnet-20241022");
+                break;
+            case 3: // DeepSeek
+                strcpy(endpointBuf_, "https://api.deepseek.com/chat/completions");
+                strcpy(modelBuf_, "deepseek-v4-pro");
+                break;
+            }
+        }
         ImGui::InputText("Model", modelBuf_, sizeof(modelBuf_));
 
         if (providerIdx_ > 0) // not Ollama
