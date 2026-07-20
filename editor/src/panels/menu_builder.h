@@ -91,6 +91,9 @@ public:
     void SetRootPath(const std::string& p) { rootPath_ = p; }
     void Draw();
 
+    // Called when a widget is selected/deselected (nullptr = deselect)
+    std::function<void(const WidgetDef*)> onWidgetSelect;
+
     // Widget type icon (Unicode) for palette
     static const char* WidgetIcon(WidgetType t);
     static const char* WidgetTypeName(WidgetType t);
@@ -143,6 +146,7 @@ private:
     void RefreshScreenList();
     std::string MenusDir() const;
     void Log(const std::string& msg);
+    void NotifySelectionChanged();
 
     // ── State ────────────────────────────────────────────────
     AIChatPanel* aiChat_ = nullptr;

@@ -206,6 +206,9 @@ int main(int argc, char* argv[])
     menuBar.SetSpriteRegistry(&spriteRegistry);
     menuBar.SetUndoManager(&undoManager);
     menuBuilder.SetAIChat(&aiChat);
+    menuBuilder.onWidgetSelect = [&](const beigebox::WidgetDef* w) {
+        propGrid.SelectWidget(w);
+    };
     menuBar.onQuit = [&]() { running = false; };
     menuBar.onExportGame = [&]() { buildManager.Open(); };
     menuBar.onNewProject = [&]() {

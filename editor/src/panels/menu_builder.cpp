@@ -71,6 +71,14 @@ void MenuBuilder::Log(const std::string& msg) {
     if (aiChat_) aiChat_->AppendMessage("system", "[Menu] " + msg);
     SDL_Log("[Menu] %s", msg.c_str());
 }
+void MenuBuilder::NotifySelectionChanged() {
+    if (!onWidgetSelect) return;
+    if (selectedWidgets_.empty()) { onWidgetSelect(nullptr); return; }
+    int id = *selectedWidgets_.begin();
+    for (auto& w : screen_.widgets)
+        if (w.id == id) { onWidgetSelect(&w); return; }
+    onWidgetSelect(nullptr);
+}
 std::string MenuBuilder::MenusDir() const { return rootPath_ + "/ui/menus"; }
 
 std::vector<int> MenuBuilder::GetChildrenOf(int parentId) const {
@@ -524,7 +532,10 @@ void MenuBuilder::HandleCanvasInput() {
         std::sort(rm.rbegin(), rm.rend());
         for (int i : rm) screen_.widgets.erase(screen_.widgets.begin() + i);
         selectedWidgets_.clear();
+        NotifySelectionChanged();
     }
+
+    NotifySelectionChanged();  // selection may have changed via marquee/move/etc
 }
 
 void MenuBuilder::StartMoving(int, int mx, int my) {
@@ -680,6 +691,7 @@ void MenuBuilder::DrawHierarchyNode(int idx, int depth) {
     if (ImGui::Selectable(label.c_str(), sel)) {
         if (!ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) selectedWidgets_.clear();
         selectedWidgets_.insert(w.id);
+        NotifySelectionChanged();
     }
 
     if (ImGui::BeginDragDropSource()) {
@@ -694,7 +706,7 @@ void MenuBuilder::DrawHierarchyNode(int idx, int depth) {
     }
 
     if (ImGui::BeginPopupContextItem()) {
-        if (ImGui::MenuItem("Delete")) { screen_.widgets.erase(screen_.widgets.begin() + idx); selectedWidgets_.clear(); ImGui::EndPopup(); ImGui::PopID(); return; }
+        if (ImGui::MenuItem("Delete")) { screen_.widgets.erase(screen_.widgets.begin() + idx); selectedWidgets_.clear(); NotifySelectionChanged(); ImGui::EndPopup(); ImGui::PopID(); return; }
         ImGui::EndPopup();
     }
 
@@ -751,7 +763,7 @@ void MenuBuilder::SendToBack(int i) {
 // FILE I/O
 // ═══════════════════════════════════════════════════════════
 
-void MenuBuilder::NewScreen() { screen_.widgets.clear(); selectedWidgets_.clear(); }
+void MenuBuilder::NewScreen() { screen_.widgets.clear(); selectedWidgets_.clear(); NotifySelectionChanged(); }
 
 void MenuBuilder::RefreshScreenList() {
     screenList_.clear();
@@ -798,6 +810,7 @@ void MenuBuilder::LoadScreen(const std::string& name) {
     }
     widgetIdCounter_ = screen_.widgets.empty() ? 1 : screen_.widgets.back().id + 1;
     selectedWidgets_.clear();
+    NotifySelectionChanged();
     Log("Loaded: " + path + " (" + std::to_string(screen_.widgets.size()) + " widgets)");
 }
 

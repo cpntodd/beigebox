@@ -1,13 +1,15 @@
 // editor/src/panels/properties_grid.cpp
 // ─────────────────────────────────────────────────────────────
-// Properties Grid — VB6-style component editor.
+// Properties Grid — multi-purpose property editor.
 // ─────────────────────────────────────────────────────────────
 
 #include "properties_grid.h"
 #include "beigebox/ecs/components.h"
+#include "menu_builder.h"  // for WidgetDef, WidgetType, Anchor
 
 #include <imgui.h>
 #include <string>
+#include <cstring>
 
 namespace beigebox {
 
@@ -15,10 +17,19 @@ void PropertiesGrid::Draw()
 {
     ImGui::Begin("Properties");
 
+    // ── Widget properties mode (takes priority) ──────────
+    if (selectedWidget_)
+    {
+        DrawWidgetProperties();
+        ImGui::End();
+        return;
+    }
+
+    // ── Entity properties mode ───────────────────────────
     if (selected_ == entt::null || !registry_->valid(selected_))
     {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-            "Select an entity in the Entity List to edit its properties.");
+            "Select an entity or widget to edit its properties.");
         ImGui::End();
         return;
     }
@@ -130,6 +141,87 @@ void PropertiesGrid::DrawWeapon()
         const char* types[] = {"Kinetic", "Thermal", "Pure"};
         ImGui::Combo("Damage Type", &w.damageType, types, 3);
     }
+}
+
+// ═════════════════════════════════════════════════════════════
+// Widget Properties mode (when a Menu Builder widget is selected)
+// ═════════════════════════════════════════════════════════════
+
+void PropertiesGrid::DrawWidgetProperties()
+{
+    const WidgetDef& w = *selectedWidget_;
+    ImGui::Text("%s %s", MenuBuilder::WidgetIcon(w.type), w.name.c_str());
+    ImGui::Separator();
+
+    // Name
+    char nameBuf[128];
+    strncpy(nameBuf, w.name.c_str(), sizeof(nameBuf) - 1);
+    nameBuf[sizeof(nameBuf) - 1] = 0;
+    if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf)))
+        const_cast<WidgetDef*>(selectedWidget_)->name = nameBuf;
+
+    // Type (read-only)
+    ImGui::LabelText("Type", "%s %s", MenuBuilder::WidgetIcon(w.type),
+        MenuBuilder::WidgetTypeName(w.type));
+
+    // Position
+    if (ImGui::InputInt("Pos X", &const_cast<WidgetDef*>(selectedWidget_)->offsetX))
+        ;
+    if (ImGui::InputInt("Pos Y", &const_cast<WidgetDef*>(selectedWidget_)->offsetY))
+        ;
+
+    // Size
+    int ww = w.width, wh = w.height;
+    if (ImGui::InputInt("Width", &ww))  { const_cast<WidgetDef*>(selectedWidget_)->width  = std::max(20, ww); }
+    if (ImGui::InputInt("Height", &wh)) { const_cast<WidgetDef*>(selectedWidget_)->height = std::max(14, wh); }
+
+    // Anchor
+    const char* anchorNames[] = {"Top-Left","Top-Center","Top-Right",
+        "Center-Left","Center","Center-Right",
+        "Bottom-Left","Bottom-Center","Bottom-Right"};
+    int aidx = (int)w.anchor;
+    if (ImGui::Combo("Anchor", &aidx, anchorNames, 9))
+        const_cast<WidgetDef*>(selectedWidget_)->anchor = (Anchor)aidx;
+
+    // Text
+    char txtBuf[256];
+    strncpy(txtBuf, w.text.c_str(), sizeof(txtBuf) - 1);
+    txtBuf[sizeof(txtBuf) - 1] = 0;
+    if (ImGui::InputText("Text", txtBuf, sizeof(txtBuf)))
+        const_cast<WidgetDef*>(selectedWidget_)->text = txtBuf;
+
+    // Font size
+    ImGui::InputInt("Font Size", &const_cast<WidgetDef*>(selectedWidget_)->fontSize);
+    if (w.fontSize < 8) const_cast<WidgetDef*>(selectedWidget_)->fontSize = 8;
+
+    // Color
+    float col[4] = {w.colorR, w.colorG, w.colorB, w.colorA};
+    if (ImGui::ColorEdit4("Color", col))
+    {
+        const_cast<WidgetDef*>(selectedWidget_)->colorR = col[0];
+        const_cast<WidgetDef*>(selectedWidget_)->colorG = col[1];
+        const_cast<WidgetDef*>(selectedWidget_)->colorB = col[2];
+        const_cast<WidgetDef*>(selectedWidget_)->colorA = col[3];
+    }
+
+    // Flags
+    ImGui::Checkbox("Visible", &const_cast<WidgetDef*>(selectedWidget_)->visible);
+    ImGui::SameLine();
+    ImGui::Checkbox("Locked", &const_cast<WidgetDef*>(selectedWidget_)->locked);
+
+    // onClick
+    char clickBuf[128];
+    strncpy(clickBuf, w.onClick.c_str(), sizeof(clickBuf) - 1);
+    clickBuf[sizeof(clickBuf) - 1] = 0;
+    if (ImGui::InputText("OnClick", clickBuf, sizeof(clickBuf)))
+        const_cast<WidgetDef*>(selectedWidget_)->onClick = clickBuf;
+
+    // Binding
+    char bindBuf[128];
+    strncpy(bindBuf, w.binding.c_str(), sizeof(bindBuf) - 1);
+    bindBuf[sizeof(bindBuf) - 1] = 0;
+    if (ImGui::InputText("Binding", bindBuf, sizeof(bindBuf)))
+        const_cast<WidgetDef*>(selectedWidget_)->binding = bindBuf;
 }
 
 } // namespace beigebox
