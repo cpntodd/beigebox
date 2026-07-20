@@ -148,7 +148,20 @@ void MenuBuilder::DrawPalette() {
     for (auto t : types) {
         ImGui::PushID((int)t);
         std::string label = std::string(WidgetIcon(t)) + "##" + WidgetTypeName(t);
-        ImGui::Button(label.c_str(), ImVec2(40, 30));
+
+        // Highlight selected tool
+        if (selectedTool_ == (int)t)
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1.0f));
+
+        if (ImGui::Button(label.c_str(), ImVec2(40, 30))) {
+            // Click to select tool (click-to-place mode)
+            selectedTool_ = (selectedTool_ == (int)t) ? -1 : (int)t;
+            Log(std::string("Tool selected: ") + WidgetTypeName(t));
+        }
+
+        if (selectedTool_ == (int)t)
+            ImGui::PopStyleColor();
+
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", WidgetTypeName(t));
         if (ImGui::BeginDragDropSource()) {
             int ti = (int)t;
@@ -159,6 +172,12 @@ void MenuBuilder::DrawPalette() {
         }
         ImGui::PopID();
     }
+    ImGui::Separator();
+    if (selectedTool_ >= 0)
+        ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f),
+            "Tool: %s", WidgetTypeName((WidgetType)selectedTool_));
+    else
+        ImGui::TextDisabled("Click tool, then click canvas");
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -169,8 +188,7 @@ void MenuBuilder::DrawCanvas() {
     ImVec2 ca = ImGui::GetContentRegionAvail();
     float cw = ca.x > 8 ? ca.x - 4 : 100;
     float ch = ca.y > 8 ? ca.y - 4 : 100;
-    ImGui::BeginChild("##mbCanvas", ImVec2(cw, ch), true,
-        ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImGui::BeginChild("##mbCanvas", ImVec2(cw, ch), true);
     ImVec2 cp = ImGui::GetCursorScreenPos();
     ca = ImGui::GetContentRegionAvail();
     cw = ca.x - 4; ch = ca.y - 4;
@@ -331,11 +349,18 @@ void MenuBuilder::HandleCanvasInput() {
     if (ImGui::IsMouseClicked(0)) {
         int hit = HitTest(mx, my);
         if (hit >= 0) {
+            // Clicked on existing widget — select and optionally start moving
             auto& w = screen_.widgets[hit];
             if (ctrl) { if (selectedWidgets_.count(w.id)) selectedWidgets_.erase(w.id); else selectedWidgets_.insert(w.id); }
             else if (shift) selectedWidgets_.insert(w.id);
             else if (!selectedWidgets_.count(w.id)) { selectedWidgets_.clear(); selectedWidgets_.insert(w.id); }
             StartMoving(hit, mx, my);
+        } else if (selectedTool_ >= 0) {
+            // Click-to-place: add widget from selected palette tool
+            int cx = (int)((mx - canvasOffsetX_) / canvasScale_);
+            int cy = (int)((my - canvasOffsetY_) / canvasScale_);
+            AddWidget((WidgetType)selectedTool_, cx, cy);
+            selectedTool_ = -1;  // deselect tool after placement
         } else {
             if (!ctrl && !shift) selectedWidgets_.clear();
             marqueeSelect_ = true; marqueeStart_ = mouse; marqueeEnd_ = mouse;

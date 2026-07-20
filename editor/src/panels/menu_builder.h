@@ -179,6 +179,9 @@ private:
     bool  showNewDialog_ = false;
     bool  showExportDialog_ = false;
     bool  showAnchorPresets_ = false;
+
+    // Click-to-place: selected palette tool (-1 = none)
+    int   selectedTool_ = -1;  // WidgetType cast to int, or -1 for none
 };
 
 } // namespace beigebox
