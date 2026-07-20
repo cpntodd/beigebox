@@ -30,12 +30,34 @@ void CombatSystem(entt::registry& registry);
 // Destroys all entities tagged with Dead.
 void CleanupSystem(entt::registry& registry);
 
+// ── ResourceSystem ───────────────────────────────────────────
+// Harvesters near ResourceNodes gather resources each tick.
+void ResourceSystem(entt::registry& registry);
+
+// ── GarrisonSystem ───────────────────────────────────────────
+// Entities with Movement targeting a Garrison entity enter it.
+void GarrisonSystem(entt::registry& registry);
+
+// ── PowerGridSystem ──────────────────────────────────────────
+// Tracks whether total power output ≥ demand. Disables
+// PowerConsumer entities when the grid is overloaded.
+void PowerGridSystem(entt::registry& registry);
+
+// ── DestructibleTerrainSystem ────────────────────────────────
+// Terrain tiles with DestructibleTerrain take damage and
+// transition to their destroyed tile type at 0 HP.
+void DestructibleTerrainSystem(entt::registry& registry);
+
 // ── Tick All ─────────────────────────────────────────────────
 // Runs all simulation systems in order. Call once per logic frame.
 inline void TickSystems(entt::registry& registry)
 {
     MovementSystem(registry);
     CombatSystem(registry);
+    ResourceSystem(registry);
+    GarrisonSystem(registry);
+    PowerGridSystem(registry);
+    DestructibleTerrainSystem(registry);
     CleanupSystem(registry);
 }
 

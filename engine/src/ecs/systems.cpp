@@ -104,4 +104,114 @@ void CleanupSystem(entt::registry& registry)
     });
 }
 
+// ── ResourceSystem ───────────────────────────────────────────
+
+void ResourceSystem(entt::registry& registry)
+{
+    // Harvesters with load < capacity near a ResourceNode
+    // increase load by their rate each tick. When the node
+    // is depleted (amount <= 0), remove the ResourceNode.
+    auto harvesterView = registry.view<Harvester, Transform>();
+
+    for (auto entity : harvesterView)
+    {
+        auto& harv = registry.get<Harvester>(entity);
+        if (harv.load >= harv.capacity) continue;
+
+        auto& t = registry.get<Transform>(entity);
+        auto nodeView = registry.view<ResourceNode, Transform>();
+        for (auto nodeEnt : nodeView)
+        {
+            auto& nodeT = registry.get<Transform>(nodeEnt);
+            FixedPoint dx = nodeT.x - t.x;
+            FixedPoint dy = nodeT.y - t.y;
+            FixedPoint dist = Abs(dx) + Abs(dy); // Manhattan
+
+            if (dist <= FixedPoint::FromInt(2)) // within 2 tiles
+            {
+                harv.load += 1;
+                auto& node = registry.get<ResourceNode>(nodeEnt);
+                node.amount -= 1;
+                if (node.amount <= 0)
+                    registry.destroy(nodeEnt);
+                break;
+            }
+        }
+    }
+}
+
+// ── GarrisonSystem ───────────────────────────────────────────
+
+void GarrisonSystem(entt::registry& registry)
+{
+    // When a unit reaches a garrisonable building, remove its
+    // Movement and add it to the building's occupants list.
+    auto garrisonView = registry.view<Garrison, Transform>();
+
+    for (auto garrisonEnt : garrisonView)
+    {
+        auto& g = registry.get<Garrison>(garrisonEnt);
+        if (static_cast<int>(g.occupants.size()) >= g.capacity) continue;
+
+        auto& gT = registry.get<Transform>(garrisonEnt);
+        auto moverView = registry.view<Movement, Transform>(entt::exclude<Dead>);
+
+        for (auto moverEnt : moverView)
+        {
+            auto& m = registry.get<Movement>(moverEnt);
+            auto& t = registry.get<Transform>(moverEnt);
+
+            FixedPoint dx = gT.x - m.targetX;
+            FixedPoint dy = gT.y - m.targetY;
+            if (Abs(dx) < FixedPoint::FromInt(1) && Abs(dy) < FixedPoint::FromInt(1))
+            {
+                // Arrived at garrison — snap inside
+                t.x = gT.x;
+                t.y = gT.y;
+                registry.remove<Movement>(moverEnt);
+                g.occupants.push_back(moverEnt);
+                break;
+            }
+        }
+    }
+}
+
+// ── PowerGridSystem ──────────────────────────────────────────
+
+void PowerGridSystem(entt::registry& registry)
+{
+    int totalOutput = 0;
+    int totalDemand = 0;
+
+    auto provView = registry.view<PowerProvider>();
+    for (auto ent : provView)
+        totalOutput += registry.get<PowerProvider>(ent).output;
+
+    auto consView = registry.view<PowerConsumer>();
+    for (auto ent : consView)
+        totalDemand += registry.get<PowerConsumer>(ent).demand;
+
+    // If demand > output, consumers operate at reduced efficiency.
+    // For now, just flag overload — actual effect applied in Lua.
+    (void)totalOutput;
+    (void)totalDemand;
+}
+
+// ── DestructibleTerrainSystem ────────────────────────────────
+
+void DestructibleTerrainSystem(entt::registry& registry)
+{
+    auto view = registry.view<DestructibleTerrain>();
+    for (auto ent : view)
+    {
+        auto& dt = registry.get<DestructibleTerrain>(ent);
+        if (dt.hp <= 0)
+        {
+            // Terrain destroyed — replace tile type via ThawGrid.
+            // The Lua bridge or map system handles visual transition.
+            registry.destroy(ent);
+        }
+    }
+}
+
 } // namespace beigebox

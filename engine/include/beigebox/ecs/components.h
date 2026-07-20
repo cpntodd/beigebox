@@ -13,6 +13,8 @@
 #include "beigebox/core/fixed_point.h"
 #include <cstdint>
 #include <string>
+#include <vector>
+#include <entt/entity/entity.hpp>
 
 namespace beigebox {
 
@@ -87,6 +89,21 @@ struct UnitPersonality { Personality type = Personality::Aggressive; };
 
 // ── Victory Condition ────────────────────────────────────────
 struct VictoryCondition { int countdown=0; bool achieved=false; };
+
+// ── Resource Harvesting ──────────────────────────────────────
+enum class ResourceType : uint8_t { Ore=0, Gas=1, Scrap=2 };
+struct ResourceNode { ResourceType type=ResourceType::Ore; int amount=1000; };
+struct Harvester { int capacity=10, load=0; float rate=1.0f; };
+
+// ── Garrison ─────────────────────────────────────────────────
+struct Garrison { int capacity=4; std::vector<entt::entity> occupants; };
+
+// ── Power Grid ───────────────────────────────────────────────
+struct PowerProvider { int output=10; };
+struct PowerConsumer { int demand=5; };
+
+// ── Destructible Terrain ─────────────────────────────────────
+struct DestructibleTerrain { int hp=100; int destroyedTile=0; };
 
 // ── Renderable ───────────────────────────────────────────────
 struct Renderable
