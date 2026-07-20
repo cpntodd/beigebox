@@ -32,6 +32,14 @@ public:
     void SetEndpoint(const std::string& url) { endpoint_ = url; }
     void SetModel(const std::string& model)  { model_ = model; }
     void SetSystemPrompt(const std::string& prompt) { systemPrompt_ = prompt; }
+    void SetThinkingEnabled(bool enabled) { thinkingEnabled_ = enabled; }
+    bool IsThinkingEnabled() const { return thinkingEnabled_; }
+
+    // ── Conversation History ─────────────────────────────────
+    // DeepSeek is stateless — we must send full history each request.
+    // Clear between independent conversations for fresh context.
+    void ClearHistory() { conversation_.clear(); }
+    size_t HistorySize() const { return conversation_.size(); }
 
     // ── Send ─────────────────────────────────────────────────
     // Sends a prompt to the LLM. Response (streamed or complete)
@@ -58,6 +66,12 @@ private:
     std::string endpoint_ = "http://localhost:11434";
     std::string model_ = "llama3";
     std::string systemPrompt_;
+    bool        thinkingEnabled_ = false;
+
+    // Conversation history for multi-turn (DeepSeek is stateless)
+    // Stores {role, content} pairs — system prompt sent separately
+    using Conversation = std::vector<std::pair<std::string, std::string>>;
+    Conversation conversation_;
 };
 
 } // namespace beigebox

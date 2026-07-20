@@ -7,6 +7,7 @@
 #include "tool_registry.h"
 
 #include <SDL2/SDL.h>
+#include <nlohmann/json.hpp>
 
 #include <cstdio>
 #include <cstring>
@@ -27,6 +28,8 @@
 
 namespace beigebox {
 
+using json = nlohmann::json;
+
 void LlmClient::BuildSystemPrompt(ToolRegistry& tools)
 {
     std::ostringstream oss;
@@ -46,58 +49,83 @@ void LlmClient::Send(const std::string& userPrompt,
                      ResponseCallback onResponse,
                      ToolCallCallback onToolCall)
 {
+    // Add user message to conversation history
+    conversation_.push_back({"user", userPrompt});
+
     std::string body = BuildRequestBody(userPrompt);
     std::string response = HttpPost(endpoint_, body);
 
     if (response.empty())
     {
-        onResponse("Error: no response from LLM. Is the server running?");
+        onResponse("Error: no response from LLM. Check API key, endpoint, and network.");
         return;
     }
 
     ParseResponse(response, onResponse, onToolCall);
 }
 
-// ── Request Building ─────────────────────────────────────────
+// ── Request Building (nlohmann::json — proper escaping) ──────
 
 std::string LlmClient::BuildRequestBody(const std::string& userPrompt) const
 {
-    std::ostringstream json;
+    json body;
+    body["model"] = model_;
+    body["stream"] = false;
 
-    if (provider_ == Provider::Ollama)
+    // Build messages array with conversation history (multi-turn)
+    json messages = json::array();
+
+    // System prompt always first (identical across calls → KV cache hits)
+    if (!systemPrompt_.empty())
     {
-        // Ollama API format
-        json << "{"
-             << "\"model\":\"" << model_ << "\","
-             << "\"system\":\"" << systemPrompt_ << "\","
-             << "\"prompt\":\"" << userPrompt << "\","
-             << "\"stream\":false"
-             << "}";
-    }
-    else if (provider_ == Provider::OpenAI || provider_ == Provider::DeepSeek)
-    {
-        json << "{"
-             << "\"model\":\"" << model_ << "\","
-             << "\"messages\":["
-             << "{\"role\":\"system\",\"content\":\"" << systemPrompt_ << "\"},"
-             << "{\"role\":\"user\",\"content\":\"" << userPrompt << "\"}"
-             << "],"
-             << "\"stream\":false"
-             << "}";
-    }
-    else // Anthropic
-    {
-        json << "{"
-             << "\"model\":\"" << model_ << "\","
-             << "\"max_tokens\":1024,"
-             << "\"system\":\"" << systemPrompt_ << "\","
-             << "\"messages\":["
-             << "{\"role\":\"user\",\"content\":\"" << userPrompt << "\"}"
-             << "]"
-             << "}";
+        messages.push_back({
+            {"role", "system"},
+            {"content", systemPrompt_}
+        });
     }
 
-    return json.str();
+    // Append conversation history (excludes current user message)
+    for (size_t i = 0; i + 1 < conversation_.size(); ++i)
+    {
+        messages.push_back({
+            {"role", conversation_[i].first},
+            {"content", conversation_[i].second}
+        });
+    }
+
+    // Current user message
+    messages.push_back({
+        {"role", "user"},
+        {"content", userPrompt}
+    });
+
+    if (provider_ == Provider::Anthropic)
+    {
+        body["system"] = systemPrompt_;
+        body["max_tokens"] = 1024;
+        json anthropicMessages = json::array();
+        for (size_t i = 0; i + 1 < conversation_.size(); ++i)
+            anthropicMessages.push_back({{"role", conversation_[i].first}, {"content", conversation_[i].second}});
+        anthropicMessages.push_back({{"role", "user"}, {"content", userPrompt}});
+        body["messages"] = anthropicMessages;
+    }
+    else if (provider_ == Provider::Ollama)
+    {
+        body["messages"] = messages;
+    }
+    else // OpenAI or DeepSeek
+    {
+        body["messages"] = messages;
+
+        if (provider_ == Provider::DeepSeek)
+        {
+            body["thinking"] = {{"type", thinkingEnabled_ ? "enabled" : "disabled"}};
+            if (thinkingEnabled_)
+                body["reasoning_effort"] = "high";
+        }
+    }
+
+    return body.dump();
 }
 
 // ── HTTP POST — raw sockets for HTTP, curl for HTTPS ─────────
@@ -220,70 +248,80 @@ std::string LlmClient::HttpPost(const std::string& url, const std::string& body)
     return response;
 }
 
-// ── Response Parsing ─────────────────────────────────────────
+// ── Response Parsing (nlohmann::json — robust) ───────────────
 
-void LlmClient::ParseResponse(const std::string& json,
+void LlmClient::ParseResponse(const std::string& rawJson,
                                ResponseCallback onResponse,
                                ToolCallCallback onToolCall)
 {
-    // Simple extraction: look for "response" or "content" field
-    // in the JSON. This is a minimal parser — a real implementation
-    // would use nlohmann/json for proper parsing.
-
-    // Try Ollama format: "response":"..."
-    std::regex ollamaResp("\"response\"\\s*:\\s*\"([^\"]+)\"");
-    std::smatch match;
-    if (std::regex_search(json, match, ollamaResp) && match.size() > 1)
+    try
     {
-        std::string text = match[1].str();
+        json resp = json::parse(rawJson);
 
-        // Unescape common escape sequences
-        auto unescape = [](std::string& s) {
-            size_t pos = 0;
-            while ((pos = s.find("\\n", pos)) != std::string::npos) { s.replace(pos, 2, "\n"); pos++; }
-            pos = 0;
-            while ((pos = s.find("\\\"", pos)) != std::string::npos) { s.replace(pos, 2, "\""); pos++; }
-        };
-        unescape(text);
+        std::string content;
+        std::string reasoning;
 
-        // Check for TOOL: commands in the response
-        std::regex toolRx("TOOL:\\s*/?(\\w+)\\s+(.*)");
-        std::istringstream iss(text);
-        std::string line;
-        std::string displayText;
-
-        while (std::getline(iss, line))
+        // ── OpenAI / DeepSeek format ─────────────────────────
+        if (resp.contains("choices") && resp["choices"].is_array() && !resp["choices"].empty())
         {
-            std::smatch toolMatch;
-            if (std::regex_search(line, toolMatch, toolRx))
-            {
-                std::string toolName = toolMatch[1].str();
-                std::string toolArgs = toolMatch[2].str();
-                onToolCall(toolName, toolArgs);
+            auto& choice = resp["choices"][0];
+            auto& message = choice["message"];
 
-                // Replace TOOL: line with executed indicator
-                displayText += "> Executed: /" + toolName + " " + toolArgs + "\n";
-            }
-            else
+            // Extract content
+            if (message.contains("content") && !message["content"].is_null())
+                content = message["content"].get<std::string>();
+
+            // Extract reasoning_content (DeepSeek thinking mode)
+            if (message.contains("reasoning_content") && !message["reasoning_content"].is_null())
+                reasoning = message["reasoning_content"].get<std::string>();
+
+            // Handle tool_calls (DeepSeek function calling)
+            if (message.contains("tool_calls") && message["tool_calls"].is_array())
             {
-                displayText += line + "\n";
+                for (auto& tc : message["tool_calls"])
+                {
+                    std::string toolName = tc["function"]["name"].get<std::string>();
+                    std::string toolArgs = tc["function"]["arguments"].get<std::string>();
+                    onToolCall(toolName, toolArgs);
+                }
             }
+
+            // If no content but has reasoning, use reasoning as display
+            if (content.empty() && !reasoning.empty())
+                content = "[thinking] " + reasoning.substr(0, 200) + "...";
+        }
+        // ── Ollama format ────────────────────────────────────
+        else if (resp.contains("response"))
+        {
+            content = resp["response"].get<std::string>();
+        }
+        else if (resp.contains("message"))
+        {
+            content = resp["message"]["content"].get<std::string>();
+        }
+        // ── Fallback ─────────────────────────────────────────
+        else
+        {
+            content = rawJson.substr(0, 500);
+            if (rawJson.size() > 500) content += "...";
         }
 
-        onResponse(displayText);
-        return;
-    }
+        // Unescape newlines for display
+        for (size_t pos = 0; (pos = content.find("\\n", pos)) != std::string::npos; pos++)
+            content.replace(pos, 2, "\n");
 
-    // Try OpenAI format: "content":"..."
-    std::regex openaiResp("\"content\"\\s*:\\s*\"([^\"]+)\"");
-    if (std::regex_search(json, match, openaiResp) && match.size() > 1)
+        if (!content.empty())
+            onResponse(content);
+        else
+            onResponse("(empty response from LLM)");
+    }
+    catch (const std::exception& e)
     {
-        onResponse(match[1].str());
-        return;
+        // Not valid JSON — return raw truncated
+        std::string fallback = rawJson.substr(0, 500);
+        if (rawJson.size() > 500) fallback += "...";
+        onResponse(fallback);
     }
-
-    // Fallback: return raw (truncated)
-    onResponse(json.substr(0, 500) + (json.size() > 500 ? "..." : ""));
 }
 
 } // namespace beigebox

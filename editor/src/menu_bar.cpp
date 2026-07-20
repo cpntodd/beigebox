@@ -520,6 +520,17 @@ void MainMenuBar::DrawAIConfigDialog()
             }
         }
         ImGui::InputText("Model", modelBuf_, sizeof(modelBuf_));
+
+        // DeepSeek thinking mode toggle
+        if (providerIdx_ == 3)
+        {
+            static bool thinking = false;
+            ImGui::Checkbox("Thinking Mode (slower, more accurate)", &thinking);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Enables chain-of-thought reasoning. Best for complex tasks.\nDisable for faster tool-calling responses.");
+            llm_->SetThinkingEnabled(thinking);
+        }
+
         if (providerIdx_ > 0) ImGui::InputText("API Key", apiKeyBuf_, sizeof(apiKeyBuf_), ImGuiInputTextFlags_Password);
         ImGui::Spacing();
         if (ImGui::Button("Apply", ImVec2(100, 0))) {
