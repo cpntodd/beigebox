@@ -7,6 +7,9 @@
 
 #include <entt/entt.hpp>
 
+#include "settings.h"
+#include "git_manager.h"
+
 #include <string>
 #include <functional>
 #include <vector>
@@ -64,6 +67,7 @@ private:
     void DrawFireEventDialog();
     void DrawPreferencesDialog();
     void DrawNewProjectDialog();
+    void DrawGitDialog();
 
     // ── Project serialization ────────────────────────────────
     void SaveProject(const std::string& path);
@@ -72,6 +76,9 @@ private:
     // ── Helpers ──────────────────────────────────────────────
     void LogToChat(const std::string& msg);
     void FireMapGeneration();
+    void BrowseFolder(char* buf, size_t bufSize);
+    void ApplySettings();
+    void EnsureStringCapacities();
 
     entt::registry*  ecs_;
     LuaBridge*       lua_;
@@ -95,6 +102,7 @@ private:
     bool showFireEvent_      = false;
     bool showNewProject_     = false;
     bool showPreferences_    = false;
+    bool showGit_            = false;
 
     char exportPath_[512]    = "./dist/MAD_Export";
     char apiKeyBuf_[128]     = {};
@@ -116,25 +124,14 @@ private:
     // Event Manager table data cache
     std::vector<std::string> eventMgrCache_;
 
-    // Preferences
-    float editorFontScale_   = 1.0f;
-    int   editorThemeIdx_    = 0;
-    char  defaultProjectPath_[256] = "./projects";
-    int   autoSaveMinutes_   = 5;
-    bool  autoBackup_        = true;
-    bool  showWelcomeOnStart_ = true;
-    bool  rememberLayout_     = true;
+    // ── Persistent Settings ──────────────────────────────────
+    Settings settings_;
+    GitManager git_;
+    bool settingsLoaded_ = false;
 
     // New Project
     char  newProjectName_[128] = "Untitled";
     char  newProjectPath_[256] = "./projects/Untitled";
-
-    // Map generation params
-    int   mapWidth_          = 32;
-    int   mapHeight_         = 32;
-    int   mapSeed_           = 42;
-    float mapSalvageDensity_ = 0.15f;
-    float mapGeothermalFreq_ = 0.05f;
 };
 
 } // namespace beigebox

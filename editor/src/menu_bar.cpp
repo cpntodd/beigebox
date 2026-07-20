@@ -41,7 +41,33 @@ MainMenuBar::MainMenuBar(entt::registry& ecs, LuaBridge& lua,
                          ToolRegistry& tools, LlmClient& llm)
     : ecs_(&ecs), lua_(&lua), tools_(&tools), llm_(&llm)
 {
-    mapSeed_ = static_cast<int>(time(nullptr)) % 10000;
+    // Load persistent settings
+    settingsLoaded_ = settings_.Load();
+    settings_.mapSeed = static_cast<int>(time(nullptr)) % 10000;
+
+    // Wire git logger to AI Chat
+    git_.SetLogger([this](const std::string& msg) {
+        LogToChat("[Git] " + msg);
+    });
+
+    // Ensure string fields have adequate buffer for ImGui::InputText
+    EnsureStringCapacities();
+}
+
+void MainMenuBar::EnsureStringCapacities()
+{
+    auto ensure = [](std::string& s, size_t cap = 256) {
+        if (s.size() < cap) s.resize(cap);
+    };
+    ensure(settings_.defaultProjectPath);
+    ensure(settings_.aiModel);
+    ensure(settings_.aiApiKey);
+    ensure(settings_.aiEndpoint);
+    ensure(settings_.gitRemote);
+    ensure(settings_.gitBranch);
+    ensure(settings_.gitAuthorName);
+    ensure(settings_.gitAuthorEmail);
+    ensure(settings_.gitCommitTemplate);
 }
 
 void MainMenuBar::LogToChat(const std::string& msg)
@@ -54,11 +80,11 @@ void MainMenuBar::FireMapGeneration()
 {
     MapGenerator gen;
     MapGenerator::Params params;
-    params.width = mapWidth_;
-    params.height = mapHeight_;
-    params.seed = mapSeed_;
-    params.salvageDensity = mapSalvageDensity_;
-    params.geothermalFreq = mapGeothermalFreq_;
+    params.width = settings_.mapWidth;
+    params.height = settings_.mapHeight;
+    params.seed = settings_.mapSeed;
+    params.salvageDensity = settings_.mapSalvageDensity;
+    params.geothermalFreq = settings_.mapGeothermalFreq;
 
     std::vector<MapTile> tiles(params.width * params.height);
     gen.Generate(tiles.data(), params);
@@ -122,6 +148,7 @@ void MainMenuBar::Draw()
     DrawFireEventDialog();
     DrawPreferencesDialog();
     DrawNewProjectDialog();
+    DrawGitDialog();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -153,6 +180,32 @@ void MainMenuBar::DrawFileMenu()
 
         if (ImGui::MenuItem("Export Game..."))
             showExport_ = true;
+        ImGui::Separator();
+
+        if (ImGui::BeginMenu("Git"))
+        {
+            if (ImGui::MenuItem("Git Panel..."))
+                showGit_ = true;
+            ImGui::Separator();
+            if (ImGui::MenuItem("Initialize Repo"))
+            {
+                if (git_.Init(projectPath_))
+                    LogToChat("Git repo initialized.");
+            }
+            if (ImGui::MenuItem("Commit All"))
+            {
+                git_.Commit(projectPath_, settings_.gitCommitTemplate);
+            }
+            if (ImGui::MenuItem("Push"))
+            {
+                git_.Push(projectPath_, settings_.gitRemote, settings_.gitBranch);
+            }
+            ImGui::Separator();
+            std::string status = git_.Status(projectPath_);
+            if (!status.empty())
+                ImGui::TextDisabled("%s", status.c_str());
+            ImGui::EndMenu();
+        }
         ImGui::Separator();
 
         if (ImGui::MenuItem("Exit", "Alt+F4"))
@@ -425,16 +478,16 @@ void MainMenuBar::DrawWorldMenu()
 
         if (ImGui::MenuItem("Save Map (.ogm)..."))
         {
-            std::vector<MapTile> tiles(mapWidth_ * mapHeight_);
-            MapGenerator::SaveToFile("saved_map.ogm", tiles.data(), mapWidth_, mapHeight_);
+            std::vector<MapTile> tiles(settings_.mapWidth * settings_.mapHeight);
+            MapGenerator::SaveToFile("saved_map.ogm", tiles.data(), settings_.mapWidth, settings_.mapHeight);
             LogToChat("Map saved to saved_map.ogm");
         }
         ImGui::Separator();
 
         if (ImGui::MenuItem("Map Properties..."))
         {
-            LogToChat("Map: " + std::to_string(mapWidth_) + "×" + std::to_string(mapHeight_)
-                      + ", seed=" + std::to_string(mapSeed_));
+            LogToChat("Map: " + std::to_string(settings_.mapWidth) + "×" + std::to_string(settings_.mapHeight)
+                      + ", seed=" + std::to_string(settings_.mapSeed));
         }
 
         if (ImGui::MenuItem("Thaw Settings..."))
@@ -814,12 +867,13 @@ void MainMenuBar::DrawFireEventDialog() {
 }
 
 // ═════════════════════════════════════════════════════════════
-// Preferences Dialog (holistic — General, Editor, AI, Keybindings)
+// Preferences Dialog (8-tab holistic settings)
 // ═════════════════════════════════════════════════════════════
 
 void MainMenuBar::DrawPreferencesDialog() {
     if (!showPreferences_) return;
-    ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
+    EnsureStringCapacities(); // re-expand strings for ImGui editing
+    ImGui::SetNextWindowSize(ImVec2(560, 480), ImGuiCond_FirstUseEver);
     ImGui::OpenPopup("Preferences");
     if (ImGui::BeginPopupModal("Preferences", &showPreferences_)) {
         if (ImGui::BeginTabBar("##prefsTabs")) {
@@ -827,11 +881,17 @@ void MainMenuBar::DrawPreferencesDialog() {
             // ── General Tab ──────────────────────────────────
             if (ImGui::BeginTabItem("General")) {
                 ImGui::Text("Default Project Path:");
-                ImGui::InputText("##defProjPath", defaultProjectPath_, sizeof(defaultProjectPath_));
-                ImGui::InputInt("Auto-save (minutes, 0=off)", &autoSaveMinutes_);
-                ImGui::Checkbox("Auto-backup on save", &autoBackup_);
-                ImGui::Checkbox("Show welcome message on start", &showWelcomeOnStart_);
-                ImGui::Checkbox("Remember window layout", &rememberLayout_);
+                ImGui::InputText("##defProjPath",
+                    &settings_.defaultProjectPath[0], settings_.defaultProjectPath.size() + 1);
+                ImGui::SameLine();
+                if (ImGui::Button("...##browseProj", ImVec2(30, 0)))
+                    BrowseFolder(&settings_.defaultProjectPath[0], settings_.defaultProjectPath.size());
+
+                ImGui::InputInt("Auto-save (minutes, 0=off)", &settings_.autoSaveMinutes);
+                if (settings_.autoSaveMinutes < 0) settings_.autoSaveMinutes = 0;
+                ImGui::Checkbox("Auto-backup on save", &settings_.autoBackupOnSave);
+                ImGui::Checkbox("Show welcome message on start", &settings_.showWelcomeOnStart);
+                ImGui::Checkbox("Remember window layout", &settings_.rememberWindowLayout);
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Save and restore panel positions between sessions.");
                 ImGui::EndTabItem();
@@ -839,28 +899,76 @@ void MainMenuBar::DrawPreferencesDialog() {
 
             // ── Editor Tab ───────────────────────────────────
             if (ImGui::BeginTabItem("Editor")) {
-                ImGui::SliderFloat("UI Scale", &editorFontScale_, 0.5f, 2.0f, "%.1f");
+                ImGui::SliderFloat("UI Scale", &settings_.editorFontScale, 0.5f, 2.0f, "%.1f");
                 const char* themes[] = {"Dark", "Light", "Classic"};
-                ImGui::Combo("Theme", &editorThemeIdx_, themes, 3);
-                ImGui::Spacing();
-                ImGui::Text("Map Defaults:");
-                ImGui::InputInt("Width", &mapWidth_);
-                ImGui::InputInt("Height", &mapHeight_);
-                ImGui::InputInt("Seed", &mapSeed_);
-                ImGui::SliderFloat("Salvage Density", &mapSalvageDensity_, 0.0f, 0.5f);
-                ImGui::SliderFloat("Geothermal Freq", &mapGeothermalFreq_, 0.0f, 0.3f);
+                ImGui::Combo("Theme", &settings_.editorThemeIdx, themes, 3);
+                ImGui::Checkbox("Show Line Numbers", &settings_.showLineNumbers);
+                ImGui::InputInt("Tab Size", &settings_.tabSize);
+                if (settings_.tabSize < 1) settings_.tabSize = 1;
+                if (settings_.tabSize > 8) settings_.tabSize = 8;
+                ImGui::Checkbox("Auto-indent", &settings_.autoIndent);
+                ImGui::EndTabItem();
+            }
+
+            // ── Rendering Tab ────────────────────────────────
+            if (ImGui::BeginTabItem("Rendering")) {
+                ImGui::Checkbox("VSync", &settings_.vsync);
+                ImGui::InputInt("FPS Limit (0=unlimited)", &settings_.fpsLimit);
+                if (settings_.fpsLimit < 0) settings_.fpsLimit = 0;
+                ImGui::ColorEdit3("Viewport BG", &settings_.viewportBgR,
+                    ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayRGB);
+                ImGui::Checkbox("Show Grid", &settings_.showGrid);
+                ImGui::SliderInt("Tile Size", &settings_.tileSize, 32, 128);
                 ImGui::EndTabItem();
             }
 
             // ── AI Tab ───────────────────────────────────────
             if (ImGui::BeginTabItem("AI")) {
                 const char* providers[] = {"Ollama", "OpenAI", "Anthropic", "DeepSeek"};
-                ImGui::Combo("Default Provider", &providerIdx_, providers, 4);
-                ImGui::InputText("Default Model", modelBuf_, sizeof(modelBuf_));
-                if (providerIdx_ > 0)
-                    ImGui::InputText("API Key", apiKeyBuf_, sizeof(apiKeyBuf_), ImGuiInputTextFlags_Password);
-                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-                    "Use AI → Configure Provider for endpoint settings.");
+                ImGui::Combo("Default Provider", &settings_.aiProviderIdx, providers, 4);
+                ImGui::InputText("Model", &settings_.aiModel[0], settings_.aiModel.size() + 1);
+                ImGui::InputText("Endpoint", &settings_.aiEndpoint[0], settings_.aiEndpoint.size() + 1);
+                if (settings_.aiProviderIdx > 0) {
+                    ImGui::InputText("API Key", &settings_.aiApiKey[0], settings_.aiApiKey.size() + 1,
+                        ImGuiInputTextFlags_Password);
+                }
+                ImGui::SliderFloat("Temperature", &settings_.aiTemperature, 0.0f, 2.0f, "%.2f");
+                ImGui::InputInt("Max Tokens", &settings_.aiMaxTokens);
+                if (settings_.aiMaxTokens < 64) settings_.aiMaxTokens = 64;
+                ImGui::Checkbox("Thinking Mode", &settings_.aiThinkingMode);
+                ImGui::EndTabItem();
+            }
+
+            // ── Git Tab ──────────────────────────────────────
+            if (ImGui::BeginTabItem("Git")) {
+                ImGui::Checkbox("Auto-commit on save", &settings_.gitAutoCommit);
+                ImGui::Checkbox("Auto-push after commit", &settings_.gitAutoPush);
+                ImGui::InputText("Remote", &settings_.gitRemote[0], settings_.gitRemote.size() + 1);
+                ImGui::InputText("Branch", &settings_.gitBranch[0], settings_.gitBranch.size() + 1);
+                ImGui::InputText("Author Name", &settings_.gitAuthorName[0], settings_.gitAuthorName.size() + 1);
+                ImGui::InputText("Author Email", &settings_.gitAuthorEmail[0], settings_.gitAuthorEmail.size() + 1);
+                ImGui::InputText("Commit Template", &settings_.gitCommitTemplate[0], settings_.gitCommitTemplate.size() + 1);
+                ImGui::TextDisabled("Git %s", git_.IsAvailable() ? "available" : "NOT FOUND");
+                ImGui::EndTabItem();
+            }
+
+            // ── Audio Tab ────────────────────────────────────
+            if (ImGui::BeginTabItem("Audio")) {
+                ImGui::SliderFloat("Master Volume", &settings_.masterVolume, 0.0f, 1.0f, "%.1f");
+                ImGui::SliderFloat("SFX Volume", &settings_.sfxVolume, 0.0f, 1.0f, "%.1f");
+                ImGui::SliderFloat("Music Volume", &settings_.musicVolume, 0.0f, 1.0f, "%.1f");
+                ImGui::Checkbox("Mute when unfocused", &settings_.muteWhenUnfocused);
+                ImGui::EndTabItem();
+            }
+
+            // ── World Tab ────────────────────────────────────
+            if (ImGui::BeginTabItem("World")) {
+                ImGui::Text("Map Defaults:");
+                ImGui::InputInt("Width", &settings_.mapWidth);
+                ImGui::InputInt("Height", &settings_.mapHeight);
+                ImGui::InputInt("Seed", &settings_.mapSeed);
+                ImGui::SliderFloat("Salvage Density", &settings_.mapSalvageDensity, 0.0f, 0.5f);
+                ImGui::SliderFloat("Geothermal Freq", &settings_.mapGeothermalFreq, 0.0f, 0.3f);
                 ImGui::EndTabItem();
             }
 
@@ -884,13 +992,152 @@ void MainMenuBar::DrawPreferencesDialog() {
         }
         ImGui::Spacing();
         if (ImGui::Button("Apply", ImVec2(100, 0))) {
-            ImGui::GetIO().FontGlobalScale = editorFontScale_;
-            ImGui::GetIO().WantSaveIniSettings = rememberLayout_;
+            ApplySettings();
             showPreferences_ = false;
-            LogToChat("Preferences applied.");
         }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(80, 0))) showPreferences_ = false;
+        ImGui::EndPopup();
+    }
+}
+
+// ── BrowseFolder helper: use zenity on Linux, manual on other platforms ──
+
+void MainMenuBar::BrowseFolder(char* buf, size_t bufSize)
+{
+#ifdef __linux__
+    FILE* pipe = popen("zenity --file-selection --directory 2>/dev/null", "r");
+    if (pipe)
+    {
+        char line[512];
+        if (fgets(line, sizeof(line), pipe))
+        {
+            // Strip trailing newline
+            size_t len = strlen(line);
+            if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+            strncpy(buf, line, bufSize - 1);
+            buf[bufSize - 1] = '\0';
+            LogToChat(std::string("Selected: ") + buf);
+        }
+        pclose(pipe);
+    }
+    else
+    {
+        LogToChat("zenity not available — type path manually.");
+    }
+#else
+    LogToChat("File browser not available on this platform — type path manually.");
+#endif
+}
+
+// ── ApplySettings: write to disk and apply runtime effects ──
+
+void MainMenuBar::ApplySettings()
+{
+    // Resize std::string fields to actual strlen after ImGui editing
+    auto trim = [](std::string& s) {
+        size_t len = strlen(s.c_str());
+        if (len < s.size()) s.resize(len);
+    };
+    trim(settings_.defaultProjectPath);
+    trim(settings_.aiModel);
+    trim(settings_.aiApiKey);
+    trim(settings_.aiEndpoint);
+    trim(settings_.gitRemote);
+    trim(settings_.gitBranch);
+    trim(settings_.gitAuthorName);
+    trim(settings_.gitAuthorEmail);
+    trim(settings_.gitCommitTemplate);
+
+    settings_.Save();
+    ImGui::GetIO().FontGlobalScale = settings_.editorFontScale;
+    ImGui::GetIO().WantSaveIniSettings = settings_.rememberWindowLayout;
+
+    // Apply VSync
+    SDL_GL_SetSwapInterval(settings_.vsync ? 1 : 0);
+
+    LogToChat("Preferences saved to " + Settings::ConfigPath());
+}
+
+// ═════════════════════════════════════════════════════════════
+// Git Panel Dialog
+// ═════════════════════════════════════════════════════════════
+
+void MainMenuBar::DrawGitDialog()
+{
+    if (!showGit_) return;
+    ImGui::SetNextWindowSize(ImVec2(480, 380), ImGuiCond_FirstUseEver);
+    ImGui::OpenPopup("Git Manager");
+    if (ImGui::BeginPopupModal("Git Manager", &showGit_))
+    {
+        if (!git_.IsAvailable())
+        {
+            ImGui::TextColored(ImVec4(1, 0.3f, 0.3f, 1), "Git not found. Install with: sudo apt install git");
+        }
+        else
+        {
+            bool isRepo = git_.IsRepo(projectPath_);
+
+            ImGui::Text("Project: %s", projectPath_.c_str());
+            ImGui::Text("Repo: %s", isRepo ? "✓ Initialized" : "✗ Not a git repo");
+            ImGui::Separator();
+
+            if (!isRepo)
+            {
+                if (ImGui::Button("Initialize Git Repo", ImVec2(180, 0)))
+                {
+                    git_.Init(projectPath_);
+                    git_.SetAuthor(projectPath_, settings_.gitAuthorName, settings_.gitAuthorEmail);
+                }
+            }
+            else
+            {
+                // Status
+                ImGui::Text("Status:");
+                std::string status = git_.Status(projectPath_);
+                ImVec2 statusSize(ImGui::GetContentRegionAvail().x, 80);
+                ImGui::InputTextMultiline("##gitStatus", &status[0], status.size(),
+                    statusSize, ImGuiInputTextFlags_ReadOnly);
+
+                ImGui::Spacing();
+
+                // Actions
+                if (ImGui::Button("Stage All & Commit", ImVec2(160, 0)))
+                    git_.Commit(projectPath_, settings_.gitCommitTemplate);
+
+                ImGui::SameLine();
+                if (ImGui::Button("Push", ImVec2(80, 0)))
+                    git_.Push(projectPath_, settings_.gitRemote, settings_.gitBranch);
+
+                ImGui::SameLine();
+                if (ImGui::Button("Refresh", ImVec2(80, 0)))
+                    { /* status auto-refreshes */ }
+
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Text("Recent Commits:");
+                std::string log = git_.Log(projectPath_, 8);
+                ImVec2 logSize(ImGui::GetContentRegionAvail().x, 100);
+                ImGui::InputTextMultiline("##gitLog", &log[0], log.size(),
+                    logSize, ImGuiInputTextFlags_ReadOnly);
+
+                // Remote config
+                ImGui::Spacing();
+                ImGui::Separator();
+                ImGui::Text("Remote: %s / %s", settings_.gitRemote.c_str(), settings_.gitBranch.c_str());
+                static char remoteUrl[256] = {};
+                ImGui::InputText("Add Remote URL", remoteUrl, sizeof(remoteUrl));
+                ImGui::SameLine();
+                if (ImGui::Button("Add", ImVec2(50, 0)))
+                {
+                    git_.AddRemote(projectPath_, settings_.gitRemote, remoteUrl);
+                    remoteUrl[0] = '\0';
+                }
+            }
+        }
+
+        ImGui::Spacing();
+        if (ImGui::Button("Close", ImVec2(80, 0))) showGit_ = false;
         ImGui::EndPopup();
     }
 }
@@ -912,12 +1159,8 @@ void MainMenuBar::DrawNewProjectDialog() {
         // Auto-update path when name changes
         ImGui::InputText("Project Path", newProjectPath_, sizeof(newProjectPath_));
         ImGui::SameLine();
-        if (ImGui::Button("...", ImVec2(30, 0))) {
-            // In a real file dialog, this would open a directory picker.
-            // For now, sync path with name.
-            snprintf(newProjectPath_, sizeof(newProjectPath_), "%s/%s",
-                defaultProjectPath_, newProjectName_);
-        }
+        if (ImGui::Button("...##browseNewProj", ImVec2(30, 0)))
+            BrowseFolder(newProjectPath_, sizeof(newProjectPath_));
 
         ImGui::Spacing();
         ImGui::Text("This will create:");
@@ -928,7 +1171,8 @@ void MainMenuBar::DrawNewProjectDialog() {
         ImGui::BulletText("  project.madproj");
         ImGui::Spacing();
 
-        ImGui::Checkbox("Generate starter map (32×32)", &autoBackup_); // reuse bool
+        static bool genStarterMap = false;
+        ImGui::Checkbox("Generate starter map (32×32)", &genStarterMap);
 
         if (ImGui::Button("Create", ImVec2(120, 0))) {
             std::string base(newProjectPath_);
@@ -978,7 +1222,15 @@ void MainMenuBar::SaveProject(const std::string& path) {
     j["entities"] = entities;
     FILE* f = fopen(path.c_str(), "w");
     if (f) { std::string s = j.dump(2); fwrite(s.c_str(),1,s.size(),f); fclose(f); projectPath_=path; LogToChat("Saved: "+path); }
-    else LogToChat("Error writing: "+path);
+    else { LogToChat("Error writing: "+path); return; }
+
+    // Auto-commit if git is enabled and repo exists
+    if (settings_.gitAutoCommit && git_.IsRepo(projectPath_))
+    {
+        git_.Commit(projectPath_, settings_.gitCommitTemplate);
+        if (settings_.gitAutoPush)
+            git_.Push(projectPath_, settings_.gitRemote, settings_.gitBranch);
+    }
 }
 
 void MainMenuBar::LoadProject(const std::string& path) {
