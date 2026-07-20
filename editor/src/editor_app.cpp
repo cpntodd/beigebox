@@ -205,6 +205,7 @@ int main(int argc, char* argv[])
     menuBar.SetThawGrid(&thawGrid);
     menuBar.SetSpriteRegistry(&spriteRegistry);
     menuBar.SetUndoManager(&undoManager);
+    menuBuilder.SetAIChat(&aiChat);
     menuBar.onQuit = [&]() { running = false; };
     menuBar.onExportGame = [&]() { buildManager.Open(); };
     menuBar.onNewProject = [&]() {
@@ -308,6 +309,10 @@ int main(int argc, char* argv[])
 
         // ── Editor Panels ───────────────────────────────────
         projectExplorer.SetProjectPath(menuBar.GetProjectPath());
+        {
+            auto pp = menuBar.GetProjectPath();
+            if (!pp.empty()) menuBuilder.SetRootPath(pp);
+        }
         entityList.Draw();
         propGrid.Draw();
         viewport.Draw();
