@@ -40,9 +40,11 @@
 #include "panels/unit_templates.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
+#include "settings.h"
 
 #include <cstdio>
 #include <cstdlib>
+#include <sys/stat.h>
 
 int main(int argc, char* argv[])
 {
@@ -76,9 +78,13 @@ int main(int argc, char* argv[])
     SDL_GL_SetSwapInterval(1);
 
     // ── Dear ImGui Initialization ───────────────────────────
-    // Validate imgui.ini before loading — if empty/corrupt, remove it
+    // Store imgui.ini in XDG config dir, not CWD
     {
-        FILE* f = fopen("imgui.ini", "rb");
+        std::string configDir = beigebox::Settings::ConfigDir();
+        mkdir(configDir.c_str(), 0755);
+        std::string iniPath = configDir + "/imgui.ini";
+
+        FILE* f = fopen(iniPath.c_str(), "rb");
         if (f)
         {
             fseek(f, 0, SEEK_END);
@@ -86,7 +92,7 @@ int main(int argc, char* argv[])
             fclose(f);
             if (sz < 10)  // too small to be valid — corrupt
             {
-                remove("imgui.ini");
+                remove(iniPath.c_str());
                 SDL_Log("imgui.ini was corrupt — removed");
             }
         }
@@ -95,7 +101,13 @@ int main(int argc, char* argv[])
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.IniFilename = "imgui.ini";  // persist window layout
+    {
+        std::string iniPath = beigebox::Settings::ConfigDir() + "/imgui.ini";
+        // Copy to a static buffer — ImGui stores the pointer, not a copy
+        static std::string s_iniPath;
+        s_iniPath = iniPath;
+        io.IniFilename = s_iniPath.c_str();
+    }
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigWindowsMoveFromTitleBarOnly = true;

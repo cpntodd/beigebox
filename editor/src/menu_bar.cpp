@@ -70,6 +70,19 @@ void MainMenuBar::EnsureStringCapacities()
     ensure(settings_.gitCommitTemplate);
 }
 
+std::string MainMenuBar::ProjectDir() const
+{
+    // Extract directory from project path (e.g. "/path/to/project.madproj" → "/path/to")
+    if (projectPath_.empty() || projectPath_ == "untitled.madproj")
+        return settings_.defaultProjectPath;
+
+    auto slash = projectPath_.rfind('/');
+    if (slash != std::string::npos)
+        return projectPath_.substr(0, slash);
+
+    return ".";
+}
+
 void MainMenuBar::LogToChat(const std::string& msg)
 {
     if (aiChat_) aiChat_->AppendMessage("system", msg);
@@ -112,7 +125,9 @@ void MainMenuBar::FireMapGeneration()
     oss << "Geothermal vents spawned as HeatSource entities.";
 
     LogToChat(oss.str());
-    MapGenerator::SaveToFile("current_map.ogm", tiles.data(), params.width, params.height);
+    std::string mapPath = ProjectDir() + "/current_map.ogm";
+    MapGenerator::SaveToFile(mapPath, tiles.data(), params.width, params.height);
+    LogToChat("Saved map to " + mapPath);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -470,7 +485,8 @@ void MainMenuBar::DrawWorldMenu()
         {
             std::vector<MapTile> tiles;
             int w, h;
-            if (MapGenerator::LoadFromFile("current_map.ogm", tiles, w, h))
+            std::string mapPath = ProjectDir() + "/current_map.ogm";
+            if (MapGenerator::LoadFromFile(mapPath, tiles, w, h))
                 LogToChat("Loaded map: " + std::to_string(w) + "×" + std::to_string(h));
             else
                 LogToChat("No map file found. Generate a map first.");
@@ -479,8 +495,9 @@ void MainMenuBar::DrawWorldMenu()
         if (ImGui::MenuItem("Save Map (.ogm)..."))
         {
             std::vector<MapTile> tiles(settings_.mapWidth * settings_.mapHeight);
-            MapGenerator::SaveToFile("saved_map.ogm", tiles.data(), settings_.mapWidth, settings_.mapHeight);
-            LogToChat("Map saved to saved_map.ogm");
+            std::string mapPath = ProjectDir() + "/saved_map.ogm";
+            MapGenerator::SaveToFile(mapPath, tiles.data(), settings_.mapWidth, settings_.mapHeight);
+            LogToChat("Map saved to " + mapPath);
         }
         ImGui::Separator();
 

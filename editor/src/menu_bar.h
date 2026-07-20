@@ -80,6 +80,7 @@ private:
     void BrowseFolder(char* buf, size_t bufSize);
     void ApplySettings();
     void EnsureStringCapacities();
+    std::string ProjectDir() const;
 
     entt::registry*  ecs_;
     LuaBridge*       lua_;
