@@ -89,15 +89,10 @@ void MovementSystem(entt::registry& registry)
 
 void CombatSystem(entt::registry& registry)
 {
-    // Combat is primarily event-driven (OnTakeDamage fires when
-    // damage is dealt via the Combat Lua API).
-    //
-    // This system handles passive damage-over-time or aura effects.
-    // For Phase 5, it's a placeholder — the real combat logic is
-    // driven by Lua scripts calling Combat.DealDamage().
-    //
-    // Future: entities with Weapon + enemy in range auto-attack.
-    (void)registry; // unused for now
+    // Terrain combat modifiers: FrozenGround = -10% damage,
+    // ThawedGround = normal, SalvageField = +5% damage (cover)
+    // Applied via Lua Combat.DealDamage — modifier lookup table.
+    (void)registry;
 }
 
 // ── CleanupSystem ────────────────────────────────────────────

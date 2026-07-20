@@ -76,6 +76,18 @@ struct HeatSource
 // Tag component — entity is pending removal at end of tick.
 struct Dead {};
 
+// ── Rank (Veterancy) ─────────────────────────────────────────
+struct Rank {
+    int level = 0, kills = 0, nextAt = 3;
+};
+
+// ── Personality (AI Autonomy) ────────────────────────────────
+enum class Personality : uint8_t { Aggressive=0, Defensive=1, Explorer=2, Coward=3 };
+struct UnitPersonality { Personality type = Personality::Aggressive; };
+
+// ── Victory Condition ────────────────────────────────────────
+struct VictoryCondition { int countdown=0; bool achieved=false; };
+
 // ── Renderable ───────────────────────────────────────────────
 struct Renderable
 {
