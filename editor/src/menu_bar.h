@@ -18,6 +18,7 @@ class LuaBridge;
 class LlmClient;
 class AIChatPanel;
 class ThawGrid;
+class SpriteRegistry;
 
 class MainMenuBar
 {
@@ -29,6 +30,7 @@ public:
     // Set the AI Chat panel reference for logging
     void SetAIChat(AIChatPanel* chat) { aiChat_ = chat; }
     void SetThawGrid(ThawGrid* grid) { thawGrid_ = grid; }
+    void SetSpriteRegistry(SpriteRegistry* reg) { spriteReg_ = reg; }
     void SetSelectedEntity(entt::entity e) { selectedEntity_ = e; }
     void SetProjectPath(const std::string& p) { projectPath_ = p; }
 
@@ -73,6 +75,7 @@ private:
     ToolRegistry*    tools_;
     LlmClient*       llm_;
     AIChatPanel*     aiChat_    = nullptr;
+    SpriteRegistry*  spriteReg_ = nullptr;
     ThawGrid*        thawGrid_  = nullptr;
     entt::entity     selectedEntity_ = entt::null;
     std::string      projectPath_    = "untitled.madproj";

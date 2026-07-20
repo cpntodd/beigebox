@@ -21,6 +21,7 @@
 #include "beigebox/lua/lua_bridge.h"
 #include "beigebox/core/fixed_point.h"
 #include "beigebox/world/thaw_grid.h"
+#include "beigebox/render/sprite_registry.h"
 
 #include "mcp/tool_registry.h"
 #include "mcp/tools.h"
@@ -30,6 +31,7 @@
 #include "panels/ai_chat.h"
 #include "panels/properties_grid.h"
 #include "panels/event_editor.h"
+#include "panels/asset_browser.h"
 #include "menu_bar.h"
 
 #include <cstdio>
@@ -89,6 +91,8 @@ int main(int argc, char* argv[])
 
     beigebox::LuaBridge lua;
     lua.Init(ecs);
+
+    beigebox::SpriteRegistry spriteRegistry;
     lua.SetThawGrid(&thawGrid);
 
     // ── MCP Tool Registry + JSON-RPC Server ─────────────────
@@ -98,6 +102,7 @@ int main(int argc, char* argv[])
     // ── Editor Panels ───────────────────────────────────────
     beigebox::EntityListPanel entityList(ecs, lua);
     beigebox::AIChatPanel     aiChat(tools);
+    beigebox::AssetBrowser    assetBrowser(spriteRegistry);
     beigebox::PropertiesGrid  propGrid(ecs);
     beigebox::EventEditor     eventEditor(ecs, lua);
 
@@ -116,7 +121,9 @@ int main(int argc, char* argv[])
 
     beigebox::MainMenuBar menuBar(ecs, lua, tools, llmClient);
     menuBar.SetAIChat(&aiChat);
+    assetBrowser.SetAIChat(&aiChat);
     menuBar.SetThawGrid(&thawGrid);
+    menuBar.SetSpriteRegistry(&spriteRegistry);
     menuBar.onQuit = [&]() { running = false; };
     menuBar.onNewProject = [&]() {
         // Clear ECS and reset to default
@@ -203,6 +210,7 @@ int main(int argc, char* argv[])
         // ── Editor Panels ───────────────────────────────────
         entityList.Draw();
         propGrid.Draw();
+        assetBrowser.Draw();
         eventEditor.Draw();
         aiChat.Draw();
 

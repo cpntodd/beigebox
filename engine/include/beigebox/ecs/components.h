@@ -12,6 +12,7 @@
 
 #include "beigebox/core/fixed_point.h"
 #include <cstdint>
+#include <string>
 
 namespace beigebox {
 
@@ -81,6 +82,14 @@ struct Renderable
     float r = 1.0f;
     float g = 1.0f;
     float b = 1.0f;
+};
+
+// ── Sprite ───────────────────────────────────────────────────
+// References a sprite by name (loaded from assets/sprites/).
+// The renderer looks up the Texture from the SpriteRegistry.
+struct Sprite
+{
+    std::string name;  // filename in assets/sprites/, e.g. "driller.png"
 };
 
 // ── Velocity (legacy, kept for compatibility) ────────────────

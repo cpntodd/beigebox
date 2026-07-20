@@ -11,6 +11,7 @@
 #include "beigebox/ecs/components.h"
 #include "beigebox/world/map_generator.h"
 #include "beigebox/world/thaw_grid.h"
+#include "beigebox/render/sprite_registry.h"
 #include "panels/ai_chat.h"
 
 #include <SDL2/SDL.h>
@@ -356,15 +357,26 @@ void MainMenuBar::DrawAssetsMenu()
     if (ImGui::BeginMenu("Assets"))
     {
         if (ImGui::MenuItem("Import Sprite..."))
-            LogToChat("Sprite import: place .png files in assets/sprites/ and reference by name.");
+        {
+            // Signal the Asset Browser to open import dialog
+            LogToChat("Use the Asset Browser panel to import sprites (drag .png to assets/sprites/).");
+        }
         if (ImGui::MenuItem("Import Texture..."))
-            LogToChat("Texture import: place image files in assets/ and reference by path.");
+            LogToChat("Texture import: place image files in assets/ and load via SpriteRegistry.");
         ImGui::Separator();
         if (ImGui::MenuItem("Asset Browser..."))
-            LogToChat("Asset browser: check assets/ directory for available files.");
+            LogToChat("Asset Browser panel is docked in the editor. Use View → Reset Layout if hidden.");
         ImGui::Separator();
         if (ImGui::MenuItem("Reload All Assets"))
-            LogToChat("Asset reload requested (restart to apply texture changes).");
+        {
+            if (spriteReg_)
+            {
+                spriteReg_->ReloadAll();
+                LogToChat("All sprites reloaded from disk.");
+            }
+            else
+                LogToChat("Sprite registry not available.");
+        }
 
         ImGui::EndMenu();
     }

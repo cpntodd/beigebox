@@ -30,6 +30,7 @@ add_executable(mad_editor
     src/panels/ai_chat.cpp
     src/panels/properties_grid.cpp
     src/panels/event_editor.cpp
+    src/panels/asset_browser.cpp
     ${IMGUI_SOURCES}
 )
 

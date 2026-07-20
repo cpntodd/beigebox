@@ -9,6 +9,7 @@ add_library(beigebox_engine STATIC
     src/render/isometric.cpp
     src/render/renderer.cpp
     src/render/texture.cpp
+    src/render/sprite_registry.cpp
     src/lua/lua_bridge.cpp
     src/ecs/systems.cpp
     src/world/thaw_grid.cpp
