@@ -41,6 +41,7 @@ add_executable(mad_editor
     src/panels/script_editor.cpp
     src/panels/entity_editor.cpp
     src/panels/debug_console.cpp
+    src/panels/level_editor.cpp
     src/undo/undo_manager.cpp
     ${IMGUI_SOURCES}
 )

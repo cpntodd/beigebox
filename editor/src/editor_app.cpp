@@ -41,6 +41,7 @@
 #include "panels/script_editor.h"
 #include "panels/entity_editor.h"
 #include "panels/debug_console.h"
+#include "panels/level_editor.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 #include "settings.h"
@@ -161,6 +162,7 @@ int main(int argc, char* argv[])
     beigebox::ScriptEditor    scriptEditor(lua);
     beigebox::EntityEditor    entityEditor(lua, viewportRenderer, thawGrid);
     beigebox::DebugConsole   debugConsole(ecs, lua);
+    beigebox::LevelEditor    levelEditor;
     unitTemplates.Load("unit_templates.json");
 
     // JSON-RPC server — logs through the AI Chat panel
@@ -296,6 +298,7 @@ int main(int argc, char* argv[])
         scriptEditor.Draw();
         entityEditor.Draw();
         debugConsole.Draw();
+        levelEditor.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
