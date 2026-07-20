@@ -96,6 +96,9 @@ public:
     static const char* WidgetTypeName(WidgetType t);
     static const char* AnchorName(Anchor a);
 
+    // ── I/O (public for project-explorer routing) ────────────
+    void LoadScreen(const std::string& name);
+
 private:
     // ── Layout regions ───────────────────────────────────────
     void DrawPalette();          // left sidebar: vertical widget icons
@@ -134,7 +137,6 @@ private:
 
     // ── I/O ──────────────────────────────────────────────────
     void NewScreen();
-    void LoadScreen(const std::string& name);
     void SaveScreen();
     void ExportLua();
     void RefreshScreenList();

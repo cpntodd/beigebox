@@ -26,6 +26,9 @@ public:
     void SetRootPath(const std::string& p) { rootPath_ = p; }
     void Draw();
 
+    // ── File I/O (public for project-explorer routing) ──────
+    void OpenFile(const std::string& path);
+
 private:
     // ── Tab management ───────────────────────────────────────
     struct Tab
@@ -40,7 +43,6 @@ private:
         int         errorLine = -1;
     };
 
-    void OpenFile(const std::string& path);
     void CloseTab(int index);
     void SaveTab(int index);
     bool CheckSyntax(const std::string& code, std::string& errorOut, int& errorLine);

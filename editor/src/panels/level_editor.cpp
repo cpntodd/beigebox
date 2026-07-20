@@ -54,6 +54,17 @@ std::string LevelEditor::ScenarioDir() const
     return rootPath_ + "/scenarios";
 }
 
+void LevelEditor::OpenMapFile(const std::string& path)
+{
+    // Extract just the filename for display; store the full path
+    auto slash = path.rfind('/');
+    std::string name = (slash != std::string::npos) ? path.substr(slash + 1) : path;
+    manifest_.mapFile = path;  // store full path (or relative — caller provides)
+    showWizard_ = false;
+    activeTab_ = 0;  // switch to Scenario tab
+    Log("Opened map: " + name);
+}
+
 // ── Trigger name tables ─────────────────────────────────────
 
 const char* LevelEditor::EventName(TriggerEvent e)

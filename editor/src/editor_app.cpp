@@ -237,6 +237,70 @@ int main(int argc, char* argv[])
         menuBar.SetSelectedEntity(e);
     };
 
+    // ── Project Explorer: open files in the right editor ────
+    projectExplorer.onFileOpen = [&](const std::string& path) {
+        auto hasDir = [&](const std::string& d) {
+            return path.find("/" + d + "/") != std::string::npos;
+        };
+        auto hasExt = [&](const std::string& ext) {
+            return path.size() > ext.size()
+                && path.compare(path.size() - ext.size(), ext.size(), ext) == 0;
+        };
+        auto filename = [&]() -> std::string {
+            auto s = path.rfind('/');
+            return (s != std::string::npos) ? path.substr(s + 1) : path;
+        };
+
+        // Check if path is a directory (scenario)
+        struct stat st;
+        if (stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+            std::string sj = path + "/scenario.json";
+            if (stat(sj.c_str(), &st) == 0) {
+                auto s = path.rfind('/');
+                std::string dir = (s != std::string::npos) ? path.substr(s + 1) : path;
+                levelEditor.LoadScenario(dir);
+                return;
+            }
+        }
+
+        // Lua scripts
+        if (hasExt(".lua") && hasDir("scripts")) {
+            scriptEditor.OpenFile(path);
+            return;
+        }
+
+        // Menu screens
+        if (hasExt(".json") && hasDir("menus")) {
+            std::string n = filename();
+            if (n.size() > 5) n = n.substr(0, n.size() - 5);  // strip .json
+            menuBuilder.LoadScreen(n);
+            return;
+        }
+
+        // Map files
+        if (hasExt(".ogm")) {
+            levelEditor.OpenMapFile(path);
+            return;
+        }
+
+        // Text files → ScriptEditor as generic viewer
+        const char* textExts[] = {
+            ".txt", ".json", ".md", ".cfg", ".ini",
+            ".xml", ".yaml", ".yml", ".toml", ".cmake",
+            ".h", ".hpp", ".cpp", ".c", ".py",
+            ".glsl", ".frag", ".vert", ".sh", ".bash", ".lua"
+        };
+        for (auto ext : textExts) {
+            if (hasExt(ext)) {
+                scriptEditor.OpenFile(path);
+                return;
+            }
+        }
+
+        // Unknown — log
+        aiChat.AppendMessage("system", "[Project] No editor for: " + filename());
+    };
+
     // ── Seed: spawn a demo entity for the user to play with ─
     auto demoEntity = ecs.create();
     ecs.emplace<beigebox::Transform>(demoEntity,
@@ -311,7 +375,11 @@ int main(int argc, char* argv[])
         projectExplorer.SetProjectPath(menuBar.GetProjectPath());
         {
             auto pp = menuBar.GetProjectPath();
-            if (!pp.empty()) menuBuilder.SetRootPath(pp);
+            if (!pp.empty()) {
+                menuBuilder.SetRootPath(pp);
+                scriptEditor.SetRootPath(pp);
+                levelEditor.SetRootPath(pp);
+            }
         }
         entityList.Draw();
         propGrid.Draw();

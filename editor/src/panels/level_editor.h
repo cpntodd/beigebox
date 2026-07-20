@@ -121,6 +121,10 @@ public:
     void SetRootPath(const std::string& p) { rootPath_ = p; }
     void Draw();
 
+    // ── I/O (public for project-explorer routing) ────────────
+    void LoadScenario(const std::string& dir);
+    void OpenMapFile(const std::string& path);  // open a .ogm file
+
 private:
     // ── Tabs / Wizard ────────────────────────────────────────
     void DrawWizard();
@@ -141,7 +145,6 @@ private:
 
     // ── I/O ──────────────────────────────────────────────────
     void NewScenario();
-    void LoadScenario(const std::string& dir);
     void SaveScenario();
     void RefreshScenarioList();
     std::string ScenarioDir() const;

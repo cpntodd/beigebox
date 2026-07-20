@@ -89,7 +89,12 @@ void ScriptEditor::OpenFile(const std::string& filename)
         }
     }
 
-    std::string fullPath = ScriptsDir() + "/" + filename;
+    // Absolute path → use as-is; relative → resolve under ScriptsDir
+    std::string fullPath;
+    if (!filename.empty() && filename[0] == '/')
+        fullPath = filename;
+    else
+        fullPath = ScriptsDir() + "/" + filename;
 
     Tab tab;
     tab.filePath = filename;
