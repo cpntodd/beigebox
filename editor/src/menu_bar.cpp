@@ -521,14 +521,90 @@ void MainMenuBar::DrawAIConfigDialog()
         }
         ImGui::InputText("Model", modelBuf_, sizeof(modelBuf_));
 
-        // DeepSeek thinking mode toggle
+        // DeepSeek: model picker + balance
         if (providerIdx_ == 3)
         {
+            // Fetch Models button
+            static std::vector<std::string> dsModels;
+            static bool modelsFetched = false;
+            ImGui::SameLine();
+            if (ImGui::Button("Fetch Models"))
+            {
+                std::string json = llm_->FetchModels();
+                if (!json.empty())
+                {
+                    try {
+                        auto arr = nlohmann::json::parse(json);
+                        dsModels.clear();
+                        for (auto& m : arr)
+                            dsModels.push_back(m.get<std::string>());
+                        modelsFetched = true;
+                        LogToChat("Fetched " + std::to_string(dsModels.size()) + " models from DeepSeek.");
+                    } catch (...) {
+                        dsModels = {"deepseek-v4-pro", "deepseek-v4-flash"};
+                        LogToChat("Model list parse failed — using defaults.");
+                    }
+                }
+                else
+                    LogToChat("Failed to fetch models. Check API key and network.");
+            }
+
+            // Model dropdown
+            if (modelsFetched && !dsModels.empty())
+            {
+                static int modelIdx = 0;
+                std::string comboLabel;
+                for (auto& m : dsModels)
+                {
+                    comboLabel += m;
+                    comboLabel += '\0';
+                }
+                comboLabel += '\0';
+                if (ImGui::Combo("##modelDropdown", &modelIdx, comboLabel.c_str()))
+                    strcpy(modelBuf_, dsModels[modelIdx].c_str());
+            }
+
+            // Thinking mode toggle
             static bool thinking = false;
             ImGui::Checkbox("Thinking Mode (slower, more accurate)", &thinking);
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Enables chain-of-thought reasoning. Best for complex tasks.\nDisable for faster tool-calling responses.");
             llm_->SetThinkingEnabled(thinking);
+
+            // Balance check
+            static std::string balanceText;
+            if (ImGui::Button("Check Balance"))
+            {
+                std::string json = llm_->FetchBalance();
+                if (!json.empty())
+                {
+                    try {
+                        auto j = nlohmann::json::parse(json);
+                        if (j.contains("balance_infos") && j["balance_infos"].is_array())
+                        {
+                            balanceText.clear();
+                            for (auto& bi : j["balance_infos"])
+                            {
+                                balanceText += bi.value("currency", "?") + ": " +
+                                    bi.value("total_balance", "?") + "\n";
+                            }
+                        }
+                        if (j.contains("is_available"))
+                            balanceText += j["is_available"].get<bool>() ? "✅ Available\n" : "❌ Insufficient\n";
+                        LogToChat("Balance: " + balanceText);
+                    } catch (...) {
+                        balanceText = "(parse error)";
+                    }
+                }
+                else
+                    balanceText = "Failed to fetch.";
+                LogToChat("Balance check: " + (balanceText.empty() ? "empty response" : balanceText));
+            }
+            if (!balanceText.empty())
+            {
+                ImGui::SameLine();
+                ImGui::TextWrapped("%s", balanceText.c_str());
+            }
         }
 
         if (providerIdx_ > 0) ImGui::InputText("API Key", apiKeyBuf_, sizeof(apiKeyBuf_), ImGuiInputTextFlags_Password);

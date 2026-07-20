@@ -36,10 +36,17 @@ public:
     bool IsThinkingEnabled() const { return thinkingEnabled_; }
 
     // ── Conversation History ─────────────────────────────────
-    // DeepSeek is stateless — we must send full history each request.
-    // Clear between independent conversations for fresh context.
     void ClearHistory() { conversation_.clear(); }
     size_t HistorySize() const { return conversation_.size(); }
+
+    // ── DeepSeek Utility APIs ────────────────────────────────
+    // Fetch available models from GET /models (DeepSeek only).
+    // Returns JSON string of model list, or empty on failure.
+    std::string FetchModels();
+
+    // Fetch account balance from GET /user/balance (DeepSeek only).
+    // Returns JSON string with balance info, or empty on failure.
+    std::string FetchBalance();
 
     // ── Send ─────────────────────────────────────────────────
     // Sends a prompt to the LLM. Response (streamed or complete)

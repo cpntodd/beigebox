@@ -324,4 +324,75 @@ void LlmClient::ParseResponse(const std::string& rawJson,
     }
 }
 
+// ── DeepSeek Utility APIs ────────────────────────────────────
+
+std::string LlmClient::FetchModels()
+{
+    // Build the base URL from the configured endpoint
+    // e.g. https://api.deepseek.com/chat/completions → https://api.deepseek.com/models
+    std::string baseUrl = endpoint_;
+    auto pos = baseUrl.find("/chat/completions");
+    if (pos != std::string::npos)
+        baseUrl = baseUrl.substr(0, pos);
+    std::string url = baseUrl + "/models";
+
+    std::string cmd = "curl -s -X GET \"" + url + "\"";
+    cmd += " -H \"Accept: application/json\"";
+    if (!apiKey_.empty())
+        cmd += " -H \"Authorization: Bearer " + apiKey_ + "\"";
+    cmd += " 2>/dev/null";
+
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return "";
+
+    std::string response;
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), pipe))
+        response += buf;
+    pclose(pipe);
+
+    // Parse and extract model IDs
+    try
+    {
+        json j = json::parse(response);
+        if (j.contains("data") && j["data"].is_array())
+        {
+            json result = json::array();
+            for (auto& m : j["data"])
+                if (m.contains("id"))
+                    result.push_back(m["id"].get<std::string>());
+            return result.dump();
+        }
+    }
+    catch (...) {}
+
+    return response; // return raw if parsing fails
+}
+
+std::string LlmClient::FetchBalance()
+{
+    std::string baseUrl = endpoint_;
+    auto pos = baseUrl.find("/chat/completions");
+    if (pos != std::string::npos)
+        baseUrl = baseUrl.substr(0, pos);
+    std::string url = baseUrl + "/user/balance";
+
+    std::string cmd = "curl -s -X GET \"" + url + "\"";
+    cmd += " -H \"Accept: application/json\"";
+    if (!apiKey_.empty())
+        cmd += " -H \"Authorization: Bearer " + apiKey_ + "\"";
+    cmd += " 2>/dev/null";
+
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) return "";
+
+    std::string response;
+    char buf[4096];
+    while (fgets(buf, sizeof(buf), pipe))
+        response += buf;
+    pclose(pipe);
+
+    return response;
+}
+
 } // namespace beigebox
