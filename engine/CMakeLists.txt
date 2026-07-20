@@ -6,6 +6,7 @@
 # ── Static Library (linked by editor and runtime) ────────────
 add_library(beigebox_engine STATIC
     src/core/fixed_point.cpp
+    src/core/job_system.cpp
     src/render/isometric.cpp
     src/render/renderer.cpp
     src/render/texture.cpp
@@ -14,6 +15,7 @@ add_library(beigebox_engine STATIC
     src/ecs/systems.cpp
     src/world/thaw_grid.cpp
     src/world/map_generator.cpp
+    src/world/spatial_grid.cpp
     src/net/lockstep.cpp
 )
 

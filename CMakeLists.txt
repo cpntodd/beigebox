@@ -21,6 +21,26 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 option(BUILD_EDITOR "Build the ImGui-based M.A.D. Editor" ON)
 option(BUILD_TESTS "Build unit tests" ON)
 option(ENABLE_LOCKSTEP_DEBUG "Enable deterministic lockstep debugging assertions" OFF)
+option(ENABLE_LTO "Enable link-time optimization (release)" ON)
+option(TARGET_X86_64_BASELINE "Target x86-64 baseline (no SSE4) for potato PCs" ON)
+
+# ── Release optimization flags ───────────────────────────────
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+    if(TARGET_X86_64_BASELINE)
+        # x86-64 baseline: circa-2003 Athlon 64 / Pentium 4.
+        # SSE2 only — no SSE4, no AVX. Safe for all 64-bit CPUs.
+        add_compile_options(-march=x86-64 -mtune=generic)
+    else()
+        # x86-64-v2: circa-2008 (SSE4.2, POPCNT, CX16). ~10% faster.
+        add_compile_options(-march=x86-64-v2 -mtune=generic)
+    endif()
+    add_compile_options(-O3)
+
+    if(ENABLE_LTO)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO ON)
+    endif()
+endif()
 
 # ── System Dependencies ──────────────────────────────────────
 # SDL2 — Windowing, input, audio, OpenGL context
