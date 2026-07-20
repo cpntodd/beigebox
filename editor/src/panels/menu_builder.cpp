@@ -124,6 +124,10 @@ void MenuBuilder::Draw() {
     DrawHierarchyTree();
     ImGui::EndChild();
 
+    // ── Properties panel (shown when a widget is selected) ──
+    if (!selectedWidgets_.empty())
+        DrawPropertiesPanel();
+
     if (showNewDialog_) {
         ImGui::OpenPopup("New Screen");
         if (ImGui::BeginPopupModal("New Screen", &showNewDialog_)) {
@@ -528,6 +532,99 @@ void MenuBuilder::StartMoving(int, int mx, int my) {
 }
 void MenuBuilder::StartResizing(int, int h, int mx, int my) {
     resizing_ = true; resizeHandle_ = h; dragStartPos_ = ImVec2((float)mx, (float)my);
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROPERTIES PANEL
+// ═══════════════════════════════════════════════════════════
+
+void MenuBuilder::DrawPropertiesPanel() {
+    // Find the first selected widget
+    WidgetDef* sel = nullptr;
+    for (auto& w : screen_.widgets) {
+        if (selectedWidgets_.count(w.id) > 0) { sel = &w; break; }
+    }
+    if (!sel) return;
+
+    ImGui::Separator();
+    ImGui::TextColored(ImVec4(0.5f, 0.8f, 1.0f, 1.0f), "Properties: %s", sel->name.c_str());
+
+    if (ImGui::BeginTable("##wprops", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 80);
+        ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthStretch);
+
+        // Name
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Name");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        char nameBuf[128];
+        strncpy(nameBuf, sel->name.c_str(), sizeof(nameBuf)-1);
+        nameBuf[sizeof(nameBuf)-1] = 0;
+        if (ImGui::InputText("##wname", nameBuf, sizeof(nameBuf)))
+            sel->name = nameBuf;
+
+        // Type (read-only)
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Type");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Text("%s %s", WidgetIcon(sel->type), WidgetTypeName(sel->type));
+
+        // Position
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Position");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("X##wposx", &sel->offsetX);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("Y##wposy", &sel->offsetY);
+
+        // Size
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Size");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("W##wsizeW", &sel->width);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(80);
+        ImGui::InputInt("H##wsizeH", &sel->height);
+        if (sel->width < 20) sel->width = 20;
+        if (sel->height < 14) sel->height = 14;
+
+        // Anchor
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Anchor");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        const char* anchorNames[] = {"Top-Left","Top-Center","Top-Right",
+            "Center-Left","Center","Center-Right",
+            "Bottom-Left","Bottom-Center","Bottom-Right"};
+        int aidx = (int)sel->anchor;
+        if (ImGui::Combo("##wanchor", &aidx, anchorNames, 9))
+            sel->anchor = (Anchor)aidx;
+
+        // Text
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Text");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::SetNextItemWidth(-1);
+        char txtBuf[256];
+        strncpy(txtBuf, sel->text.c_str(), sizeof(txtBuf)-1);
+        txtBuf[sizeof(txtBuf)-1] = 0;
+        if (ImGui::InputText("##wtext", txtBuf, sizeof(txtBuf)))
+            sel->text = txtBuf;
+
+        // Visible / Locked
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(0); ImGui::TextDisabled("Flags");
+        ImGui::TableSetColumnIndex(1);
+        ImGui::Checkbox("Visible", &sel->visible);
+        ImGui::SameLine();
+        ImGui::Checkbox("Locked", &sel->locked);
+
+        ImGui::EndTable();
+    }
 }
 
 // ═══════════════════════════════════════════════════════════
