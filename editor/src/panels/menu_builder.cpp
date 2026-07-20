@@ -98,15 +98,30 @@ void MenuBuilder::Draw() {
     if (ImGui::Button("Export")) showExportDialog_ = true;
     ImGui::Separator();
 
+    // ── 3-panel layout: palette | canvas | hierarchy ──────
+    // Use child windows instead of Columns for reliable fill behaviour
+    float availW = ImGui::GetContentRegionAvail().x;
+    float availH = ImGui::GetContentRegionAvail().y;
     float palW = 52, hierW = 200;
-    ImGui::Columns(3, "##mbCols", false);
-    ImGui::SetColumnWidth(0, palW);
-    // Column 1 auto-fills the remaining center space
-    ImGui::SetColumnWidth(2, hierW);
-    DrawPalette(); ImGui::NextColumn();
-    DrawCanvas(); ImGui::NextColumn();
-    DrawHierarchyTree(); ImGui::NextColumn();
-    ImGui::Columns(1);
+    float canvasW = availW - palW - hierW;
+    if (canvasW < 100) canvasW = 100;
+
+    // Left: palette
+    ImGui::BeginChild("##palettePane", ImVec2(palW, availH), false);
+    DrawPalette();
+    ImGui::EndChild();
+    ImGui::SameLine();
+
+    // Center: canvas (fills remaining space)
+    ImGui::BeginChild("##canvasPane", ImVec2(canvasW, availH), false);
+    DrawCanvasContent();
+    ImGui::EndChild();
+    ImGui::SameLine();
+
+    // Right: hierarchy
+    ImGui::BeginChild("##hierPane", ImVec2(hierW, availH), false);
+    DrawHierarchyTree();
+    ImGui::EndChild();
 
     if (showNewDialog_) {
         ImGui::OpenPopup("New Screen");
@@ -182,9 +197,7 @@ void MenuBuilder::DrawPalette() {
 // CANVAS
 // ═══════════════════════════════════════════════════════════
 
-void MenuBuilder::DrawCanvas() {
-    // Fill remaining column space; NoScrollbar (canvas handles its own pan/zoom)
-    ImGui::BeginChild("##mbCanvas", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar);
+void MenuBuilder::DrawCanvasContent() {
     ImVec2 cp = ImGui::GetCursorScreenPos();
     ImVec2 ca = ImGui::GetContentRegionAvail();
     float cw = ca.x - 4, ch = ca.y - 4;
@@ -241,7 +254,6 @@ void MenuBuilder::DrawCanvas() {
         (std::to_string(screen_.screenW) + "x" + std::to_string(screen_.screenH)
          + " | " + std::to_string(screen_.widgets.size()) + " widgets"
          + " | " + std::to_string((int)(zoomFactor_ * 100)) + "%").c_str());
-    ImGui::EndChild();
 }
 
 ImVec2 MenuBuilder::AnchorToCanvasPos(const WidgetDef& w) const {

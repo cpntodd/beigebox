@@ -102,7 +102,7 @@ public:
 private:
     // ── Layout regions ───────────────────────────────────────
     void DrawPalette();          // left sidebar: vertical widget icons
-    void DrawCanvas();           // center: WYSIWYG design surface
+    void DrawCanvasContent();    // center: WYSIWYG design surface (no inner child; parent provides container)
     void DrawHierarchyTree();    // right panel: parent-child tree
     void DrawPropertiesPanel();  // bottom or overlay: selected widget props
 
