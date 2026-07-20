@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <algorithm>
+#include <cmath>
 
 namespace beigebox {
 using json = nlohmann::json;
@@ -350,6 +351,24 @@ int MenuBuilder::HitTest(int mx, int my) const {
     return -1;
 }
 
+// Returns resize handle index (0-7) if (mx,my) is near a handle of widget at idx, else -1.
+// 0=TL 1=TC 2=TR  3=CR  4=BR  5=BC  6=BL  7=CL
+int MenuBuilder::HitTestResizeHandles(int idx, int mx, int my) const {
+    if (idx < 0 || idx >= (int)screen_.widgets.size()) return -1;
+    const auto& w = screen_.widgets[idx];
+    ImVec2 pos = AnchorToCanvasPos(w);
+    float ww = w.width * canvasScale_, wh = w.height * canvasScale_;
+    float hs = 6.0f;  // hit radius (pixels)
+    ImVec2 h[8] = {
+        {pos.x, pos.y}, {pos.x+ww/2, pos.y}, {pos.x+ww, pos.y},
+        {pos.x+ww, pos.y+wh/2}, {pos.x+ww, pos.y+wh}, {pos.x+ww/2, pos.y+wh},
+        {pos.x, pos.y+wh}, {pos.x, pos.y+wh/2}
+    };
+    for (int i = 0; i < 8; ++i)
+        if (fabsf(mx - h[i].x) <= hs && fabsf(my - h[i].y) <= hs) return i;
+    return -1;
+}
+
 void MenuBuilder::HandleCanvasInput() {
     ImVec2 mouse = ImGui::GetMousePos();
     int mx = (int)mouse.x, my = (int)mouse.y;
@@ -358,6 +377,26 @@ void MenuBuilder::HandleCanvasInput() {
     if (!inCanvas) { hoveredWidget_ = -1; return; }
     hoveredWidget_ = HitTest(mx, my);
     bool ctrl = ImGui::GetIO().KeyCtrl, shift = ImGui::GetIO().KeyShift;
+
+    // ── Resize cursor feedback ────────────────────────────
+    if (resizing_) {
+        static const ImGuiMouseCursor rCur[8] = {
+            ImGuiMouseCursor_ResizeNWSE, ImGuiMouseCursor_ResizeNS,  ImGuiMouseCursor_ResizeNESW,
+            ImGuiMouseCursor_ResizeEW,   ImGuiMouseCursor_ResizeNWSE, ImGuiMouseCursor_ResizeNS,
+            ImGuiMouseCursor_ResizeNESW, ImGuiMouseCursor_ResizeEW
+        };
+        ImGui::SetMouseCursor(rCur[resizeHandle_]);
+    } else if (hoveredWidget_ >= 0 && selectedWidgets_.count(screen_.widgets[hoveredWidget_].id) > 0) {
+        int h = HitTestResizeHandles(hoveredWidget_, mx, my);
+        if (h >= 0) {
+            static const ImGuiMouseCursor hCur[8] = {
+                ImGuiMouseCursor_ResizeNWSE, ImGuiMouseCursor_ResizeNS,  ImGuiMouseCursor_ResizeNESW,
+                ImGuiMouseCursor_ResizeEW,   ImGuiMouseCursor_ResizeNWSE, ImGuiMouseCursor_ResizeNS,
+                ImGuiMouseCursor_ResizeNESW, ImGuiMouseCursor_ResizeEW
+            };
+            ImGui::SetMouseCursor(hCur[h]);
+        }
+    }
 
     // ── Scroll-wheel zoom (centered on canvas) ──────────
     float wheel = ImGui::GetIO().MouseWheel;
@@ -369,12 +408,26 @@ void MenuBuilder::HandleCanvasInput() {
     if (ImGui::IsMouseClicked(0)) {
         int hit = HitTest(mx, my);
         if (hit >= 0) {
-            // Clicked on existing widget — select and optionally start moving
             auto& w = screen_.widgets[hit];
-            if (ctrl) { if (selectedWidgets_.count(w.id)) selectedWidgets_.erase(w.id); else selectedWidgets_.insert(w.id); }
-            else if (shift) selectedWidgets_.insert(w.id);
-            else if (!selectedWidgets_.count(w.id)) { selectedWidgets_.clear(); selectedWidgets_.insert(w.id); }
-            StartMoving(hit, mx, my);
+            bool wasSel = selectedWidgets_.count(w.id) > 0;
+
+            // Update selection
+            if (ctrl) {
+                if (wasSel) selectedWidgets_.erase(w.id); else selectedWidgets_.insert(w.id);
+            } else if (shift) {
+                selectedWidgets_.insert(w.id);
+            } else if (!wasSel) {
+                selectedWidgets_.clear();
+                selectedWidgets_.insert(w.id);
+            }
+
+            // Check resize handles first (only if widget was already selected)
+            int handle = wasSel ? HitTestResizeHandles(hit, mx, my) : -1;
+            if (handle >= 0) {
+                StartResizing(hit, handle, mx, my);
+            } else {
+                StartMoving(hit, mx, my);
+            }
         } else if (selectedTool_ >= 0) {
             // Click-to-place: add widget from selected palette tool
             int cx = (int)((mx - canvasOffsetX_) / canvasScale_);
@@ -401,9 +454,22 @@ void MenuBuilder::HandleCanvasInput() {
         if (!selectedWidgets_.empty()) {
             int id = *selectedWidgets_.begin();
             for (auto& w : screen_.widgets) if (w.id == id) {
-                w.width += dw; w.height += dh;
-                if (w.width < 20) w.width = 20;
-                if (w.height < 14) w.height = 14;
+                // Directional resize based on handle index
+                // 0=TL 1=TC 2=TR  3=CR  4=BR  5=BC  6=BL  7=CL
+                switch (resizeHandle_) {
+                    case 0: w.offsetX += dw; w.width -= dw; w.offsetY += dh; w.height -= dh; break;
+                    case 1: w.offsetY += dh; w.height -= dh; break;
+                    case 2: w.width += dw; w.offsetY += dh; w.height -= dh; break;
+                    case 3: w.width += dw; break;
+                    case 4: w.width += dw; w.height += dh; break;
+                    case 5: w.height += dh; break;
+                    case 6: w.offsetX += dw; w.width -= dw; w.height += dh; break;
+                    case 7: w.offsetX += dw; w.width -= dw; break;
+                    default: w.width += dw; w.height += dh; break;
+                }
+                // Minimum size
+                if (w.width < 20) { w.offsetX -= (20 - w.width) * ((resizeHandle_ == 0 || resizeHandle_ == 6 || resizeHandle_ == 7) ? 1 : 0); w.width = 20; }
+                if (w.height < 14) { w.offsetY -= (14 - w.height) * ((resizeHandle_ == 0 || resizeHandle_ == 1 || resizeHandle_ == 2) ? 1 : 0); w.height = 14; }
                 break;
             }
         }

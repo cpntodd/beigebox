@@ -119,6 +119,7 @@ private:
     void HandleCanvasInput();
     void HandleDragDrop();
     int  HitTest(int mx, int my) const;  // returns widget index at point
+    int  HitTestResizeHandles(int widgetIdx, int mx, int my) const;  // returns handle 0-7 or -1
     ImVec2 AnchorToCanvasPos(const WidgetDef& w) const;
     void StartMoving(int widgetIdx, int mx, int my);
     void StartResizing(int widgetIdx, int handle, int mx, int my);
