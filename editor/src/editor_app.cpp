@@ -70,6 +70,9 @@ int main(int argc, char* argv[])
     SDL_GL_SetSwapInterval(1);
 
     // ── Dear ImGui Initialization ───────────────────────────
+    // Remove stale imgui.ini to prevent DPI assertion crashes on restart
+    remove("imgui.ini");
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();

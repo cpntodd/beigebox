@@ -108,26 +108,34 @@ std::string LlmClient::HttpPost(const std::string& url, const std::string& body)
     auto schemeEnd = url.find("://");
     bool isHttps = (schemeEnd != std::string::npos && url.substr(0, schemeEnd) == "https");
 
-    // ── HTTPS: use curl via popen ────────────────────────────
+    // ── HTTPS: use curl via popen (temp file avoids shell escaping) ──
     if (isHttps)
     {
+        // Write body to temp file to avoid shell injection/escaping issues
+        std::string tmpPath = "/tmp/beigebox_llm_req.json";
+        FILE* tmpf = fopen(tmpPath.c_str(), "w");
+        if (!tmpf) return "Error: cannot create temp file for LLM request.";
+        fwrite(body.c_str(), 1, body.size(), tmpf);
+        fclose(tmpf);
+
         std::string cmd = "curl -s -X POST \"" + url + "\"";
         cmd += " -H \"Content-Type: application/json\"";
         if (!apiKey_.empty())
             cmd += " -H \"Authorization: Bearer " + apiKey_ + "\"";
-        cmd += " -d '" + body + "' 2>/dev/null";
+        cmd += " -d @" + tmpPath + " 2>/dev/null";
 
         FILE* pipe = popen(cmd.c_str(), "r");
-        if (!pipe) return "Error: curl not available. Install curl for HTTPS support.";
+        if (!pipe) { remove(tmpPath.c_str()); return "Error: curl not available."; }
 
         std::string response;
         char buf[4096];
         while (fgets(buf, sizeof(buf), pipe))
             response += buf;
         int rc = pclose(pipe);
+        remove(tmpPath.c_str());
 
         if (rc != 0 || response.empty())
-            return "Error: no response from LLM. Is the server running?";
+            return "Error: no response from LLM. Check API key, endpoint, and network.";
 
         return response;
     }
