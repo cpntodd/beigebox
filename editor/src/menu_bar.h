@@ -120,6 +120,7 @@ private:
     int   autoSaveMinutes_   = 5;
     bool  autoBackup_        = true;
     bool  showWelcomeOnStart_ = true;
+    bool  rememberLayout_     = true;
 
     // New Project
     char  newProjectName_[128] = "Untitled";

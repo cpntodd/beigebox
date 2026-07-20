@@ -820,6 +820,9 @@ void MainMenuBar::DrawPreferencesDialog() {
                 ImGui::InputInt("Auto-save (minutes, 0=off)", &autoSaveMinutes_);
                 ImGui::Checkbox("Auto-backup on save", &autoBackup_);
                 ImGui::Checkbox("Show welcome message on start", &showWelcomeOnStart_);
+                ImGui::Checkbox("Remember window layout", &rememberLayout_);
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Save and restore panel positions between sessions.");
                 ImGui::EndTabItem();
             }
 
@@ -871,6 +874,7 @@ void MainMenuBar::DrawPreferencesDialog() {
         ImGui::Spacing();
         if (ImGui::Button("Apply", ImVec2(100, 0))) {
             ImGui::GetIO().FontGlobalScale = editorFontScale_;
+            ImGui::GetIO().WantSaveIniSettings = rememberLayout_;
             showPreferences_ = false;
             LogToChat("Preferences applied.");
         }

@@ -70,12 +70,26 @@ int main(int argc, char* argv[])
     SDL_GL_SetSwapInterval(1);
 
     // ── Dear ImGui Initialization ───────────────────────────
-    // Remove stale imgui.ini to prevent DPI assertion crashes on restart
-    remove("imgui.ini");
+    // Validate imgui.ini before loading — if empty/corrupt, remove it
+    {
+        FILE* f = fopen("imgui.ini", "rb");
+        if (f)
+        {
+            fseek(f, 0, SEEK_END);
+            long sz = ftell(f);
+            fclose(f);
+            if (sz < 10)  // too small to be valid — corrupt
+            {
+                remove("imgui.ini");
+                SDL_Log("imgui.ini was corrupt — removed");
+            }
+        }
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = "imgui.ini";  // persist window layout
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigWindowsMoveFromTitleBarOnly = true;
