@@ -186,13 +186,12 @@ void MenuBuilder::DrawPalette() {
 // ═══════════════════════════════════════════════════════════
 
 void MenuBuilder::DrawCanvas() {
-    ImVec2 ca = ImGui::GetContentRegionAvail();
-    float cw = ca.x > 8 ? ca.x - 4 : 100;
-    float ch = ca.y > 8 ? ca.y - 4 : 100;
-    ImGui::BeginChild("##mbCanvas", ImVec2(cw, ch), true);
+    // Fill remaining column space; NoScrollbar (canvas handles its own pan/zoom)
+    ImGui::BeginChild("##mbCanvas", ImVec2(0, 0), true, ImGuiWindowFlags_NoScrollbar);
     ImVec2 cp = ImGui::GetCursorScreenPos();
-    ca = ImGui::GetContentRegionAvail();
-    cw = ca.x - 4; ch = ca.y - 4;
+    ImVec2 ca = ImGui::GetContentRegionAvail();
+    float cw = ca.x - 4, ch = ca.y - 4;
+    if (cw < 100) cw = 100; if (ch < 100) ch = 100;
     if (cw < 100) cw = 100; if (ch < 100) ch = 100;
     canvasScale_ = std::min(cw / screen_.screenW, ch / screen_.screenH);
     canvasW_ = (int)(screen_.screenW * canvasScale_);
