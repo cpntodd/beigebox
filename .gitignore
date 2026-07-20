@@ -37,6 +37,11 @@ _deps/
 # ImGui layout cache (machine-specific)
 imgui.ini
 
+# Screenshots and temp images
+*.png
+*.jpg
+*.bmp
+
 # ── Project-Specific ─────────────────────────────────────────
 # Generated map files
 *.ogm
