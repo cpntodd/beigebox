@@ -342,7 +342,18 @@ void MainMenuBar::DrawEventsMenu()
         }
         ImGui::Separator();
 
-        ImGui::MenuItem("Event Debugger", nullptr, false, false);
+        if (ImGui::MenuItem("Event Debugger"))
+            LogToChat("Event Debugger panel is docked in the editor. Use View → Reset Layout if hidden.");
+        if (ImGui::MenuItem("Enable Event Tracing"))
+        {
+            lua_->SetTraceEnabled(!lua_->IsTraceEnabled());
+            LogToChat(std::string("Event tracing: ") + (lua_->IsTraceEnabled() ? "ON" : "OFF"));
+        }
+        if (ImGui::MenuItem("Clear Traces"))
+        {
+            lua_->ClearTraces();
+            LogToChat("Event traces cleared.");
+        }
 
         ImGui::EndMenu();
     }

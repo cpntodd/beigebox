@@ -31,6 +31,7 @@ add_executable(mad_editor
     src/panels/properties_grid.cpp
     src/panels/event_editor.cpp
     src/panels/asset_browser.cpp
+    src/panels/event_debugger.cpp
     ${IMGUI_SOURCES}
 )
 

@@ -93,7 +93,50 @@ bool LuaBridge::LoadScript(entt::entity entity,
 
 void LuaBridge::FireEvent(entt::entity entity, const std::string& eventName)
 {
-    auto entityIt = scripts_.find(EntityToID(entity));
+    uint32_t eid = EntityToID(entity);
+
+    // ── Trace ────────────────────────────────────────────────
+    if (traceEnabled_)
+    {
+        EventTrace trace;
+        trace.entityId = eid;
+        trace.eventName = eventName;
+        trace.frame = traceFrame_++;
+        trace.breakpoint = false;
+
+        if (traces_.size() >= kMaxTraces)
+            traces_.erase(traces_.begin());
+        traces_.push_back(trace);
+    }
+
+    // ── Check breakpoint ─────────────────────────────────────
+    if (!paused_ || stepMode_)
+    {
+        bool hitBreakpoint = HasBreakpoint(entity, eventName);
+        if (hitBreakpoint)
+        {
+            paused_ = true;
+            stepMode_ = false;
+            lastBreakEntity_ = eid;
+            lastBreakEvent_ = eventName;
+
+            // Mark last trace as breakpoint
+            if (!traces_.empty())
+                traces_.back().breakpoint = true;
+
+            if (breakCallback_)
+                breakCallback_(eid, eventName);
+
+            SDL_Log("LuaBridge: BREAKPOINT hit — entity %u, event '%s'", eid, eventName.c_str());
+        }
+    }
+
+    // ── If paused and not stepping, skip execution ───────────
+    if (paused_ && !stepMode_)
+        return;
+    stepMode_ = false; // consumed the step
+
+    auto entityIt = scripts_.find(eid);
     if (entityIt == scripts_.end())
         return;
 
@@ -101,15 +144,13 @@ void LuaBridge::FireEvent(entt::entity entity, const std::string& eventName)
     if (eventIt == entityIt->second.end())
         return;
 
-    // ── Call the Lua function ────────────────────────────────
-    // Signature: function(entity_id)  or  function(entity_id, dt)
     sol::protected_function& fn = eventIt->second;
-    auto result = fn(EntityToID(entity));
+    auto result = fn(eid);
     if (!result.valid())
     {
         sol::error err = result;
         SDL_Log("LuaBridge: runtime error [entity %u, event '%s']: %s",
-                EntityToID(entity), eventName.c_str(), err.what());
+                eid, eventName.c_str(), err.what());
     }
 }
 
@@ -119,6 +160,31 @@ bool LuaBridge::HasScript(entt::entity entity, const std::string& eventName) con
     if (entityIt == scripts_.end())
         return false;
     return entityIt->second.find(eventName) != entityIt->second.end();
+}
+
+// ── Breakpoint Management ────────────────────────────────────
+
+void LuaBridge::AddBreakpoint(entt::entity entity, const std::string& eventName)
+{
+    breakpoints_.insert({EntityToID(entity), eventName});
+    SDL_Log("LuaBridge: breakpoint set on entity %u, event '%s'",
+            EntityToID(entity), eventName.c_str());
+}
+
+void LuaBridge::RemoveBreakpoint(entt::entity entity, const std::string& eventName)
+{
+    breakpoints_.erase({EntityToID(entity), eventName});
+}
+
+bool LuaBridge::HasBreakpoint(entt::entity entity, const std::string& eventName) const
+{
+    // Check specific entity breakpoint
+    if (breakpoints_.count({EntityToID(entity), eventName}) > 0)
+        return true;
+    // Check wildcard (entity 0xFFFFFFFF = all entities)
+    if (breakpoints_.count({0xFFFFFFFF, eventName}) > 0)
+        return true;
+    return false;
 }
 
 // ── Transform API Registration ───────────────────────────────

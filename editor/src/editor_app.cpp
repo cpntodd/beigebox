@@ -32,6 +32,7 @@
 #include "panels/properties_grid.h"
 #include "panels/event_editor.h"
 #include "panels/asset_browser.h"
+#include "panels/event_debugger.h"
 #include "menu_bar.h"
 
 #include <cstdio>
@@ -105,6 +106,7 @@ int main(int argc, char* argv[])
     beigebox::AssetBrowser    assetBrowser(spriteRegistry);
     beigebox::PropertiesGrid  propGrid(ecs);
     beigebox::EventEditor     eventEditor(ecs, lua);
+    beigebox::EventDebugger   eventDebugger(ecs, lua);
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -122,6 +124,8 @@ int main(int argc, char* argv[])
     beigebox::MainMenuBar menuBar(ecs, lua, tools, llmClient);
     menuBar.SetAIChat(&aiChat);
     assetBrowser.SetAIChat(&aiChat);
+    eventDebugger.SetAIChat(&aiChat);
+    eventDebugger.SetAIChat(&aiChat);
     menuBar.SetThawGrid(&thawGrid);
     menuBar.SetSpriteRegistry(&spriteRegistry);
     menuBar.onQuit = [&]() { running = false; };
@@ -219,6 +223,7 @@ int main(int argc, char* argv[])
         propGrid.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
+        eventDebugger.Draw();
         aiChat.Draw();
 
         // ── ImGui Frame End + Render ────────────────────────

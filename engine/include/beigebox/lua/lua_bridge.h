@@ -20,9 +20,29 @@
 
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <functional>
 #include <cstdint>
+#include <utility>
 
 namespace beigebox {
+
+// ── Event Trace Entry ────────────────────────────────────────
+struct EventTrace {
+    uint32_t    entityId;
+    std::string eventName;
+    uint32_t    frame;       // global event counter
+    bool        breakpoint;  // was this a breakpoint hit?
+};
+
+// Hash pair for unordered_set
+struct PairHash {
+    template<class T1, class T2>
+    size_t operator()(const std::pair<T1,T2>& p) const {
+        return std::hash<T1>{}(p.first) ^ (std::hash<T2>{}(p.second) << 1);
+    }
+};
 
 class LuaBridge
 {
@@ -73,6 +93,42 @@ public:
     // Check if an entity has a script loaded for an event
     bool HasScript(entt::entity entity, const std::string& eventName) const;
 
+    // ── Event Debugger ───────────────────────────────────────
+    //
+    // Enable/disable event tracing. When enabled, every FireEvent
+    // call is recorded in a ring buffer.
+    void SetTraceEnabled(bool enabled) { traceEnabled_ = enabled; }
+    bool IsTraceEnabled() const { return traceEnabled_; }
+
+    // Get recent event traces (last N events, newest first).
+    const std::vector<EventTrace>& GetTraces() const { return traces_; }
+
+    // Clear all traces.
+    void ClearTraces() { traces_.clear(); traceFrame_ = 0; }
+
+    // ── Breakpoints ──────────────────────────────────────────
+    //
+    // Add a breakpoint: execution pauses when this event fires
+    // on this entity. Use entity=entt::null for all entities.
+    void AddBreakpoint(entt::entity entity, const std::string& eventName);
+    void RemoveBreakpoint(entt::entity entity, const std::string& eventName);
+    void ClearAllBreakpoints() { breakpoints_.clear(); paused_ = false; }
+    bool HasBreakpoint(entt::entity entity, const std::string& eventName) const;
+
+    // Step controls
+    void ContinueExecution() { paused_ = false; stepMode_ = false; }
+    void StepOnce()          { paused_ = false; stepMode_ = true;  }
+    bool IsPaused() const    { return paused_; }
+
+    // Callback: called when a breakpoint is hit (from game thread).
+    // The callback receives the entity ID and event name.
+    using BreakCallback = std::function<void(uint32_t entityId, const std::string& eventName)>;
+    void SetBreakCallback(BreakCallback cb) { breakCallback_ = std::move(cb); }
+
+    // Get last break info
+    uint32_t    LastBreakEntity() const { return lastBreakEntity_; }
+    std::string LastBreakEvent()  const { return lastBreakEvent_; }
+
 private:
     // ── API Registration ─────────────────────────────────────
     void RegisterTransformAPI();
@@ -97,6 +153,19 @@ private:
         uint32_t,
         std::unordered_map<std::string, sol::protected_function>
     > scripts_;
+
+    // ── Debugger State ───────────────────────────────────────
+    static constexpr int kMaxTraces = 256;
+    std::vector<EventTrace> traces_;
+    uint32_t traceFrame_ = 0;
+    bool traceEnabled_ = false;
+
+    std::unordered_set<std::pair<uint32_t, std::string>, PairHash> breakpoints_;
+    bool paused_       = false;
+    bool stepMode_     = false;
+    uint32_t lastBreakEntity_ = 0;
+    std::string lastBreakEvent_;
+    BreakCallback breakCallback_;
 };
 
 } // namespace beigebox
