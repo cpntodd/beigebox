@@ -115,12 +115,29 @@ int main(int argc, char* argv[])
     bool running = true;
 
     beigebox::MainMenuBar menuBar(ecs, lua, tools, llmClient);
+    menuBar.SetAIChat(&aiChat);
+    menuBar.SetThawGrid(&thawGrid);
     menuBar.onQuit = [&]() { running = false; };
-    menuBar.onGenerateMap = [&]() {
-        aiChat.AppendMessage("system", "Map generation triggered. Use /generate_map tool.");
+    menuBar.onNewProject = [&]() {
+        // Clear ECS and reset to default
+        ecs.clear();
+        thawGrid.Init(32, 32);
+        auto e = ecs.create();
+        ecs.emplace<beigebox::Transform>(e, beigebox::FixedPoint::FromInt(5), beigebox::FixedPoint::FromInt(5));
+        ecs.emplace<beigebox::Health>(e, beigebox::FixedPoint::FromInt(100), beigebox::FixedPoint::FromInt(100));
+        ecs.emplace<beigebox::Player>(e, 1);
+        lua.LoadScript(e, "OnTick", R"lua(
+            function OnTick(entity_id)
+                local x, y = Transform.GetPosition(entity_id)
+                x = x + 4
+                if x > 12 * 256 then x = 0 end
+                Transform.SetPosition(entity_id, x, y)
+            end
+        )lua");
+        aiChat.AppendMessage("system", "New project created. Demo entity spawned.");
     };
-    menuBar.onExportGame = [&]() {
-        aiChat.AppendMessage("system", "Export dialog opened from menu.");
+    menuBar.onResetLayout = [&]() {
+        aiChat.AppendMessage("system", "Layout reset requested. Delete imgui.ini and restart to reset window positions.");
     };
 
     // ── Seed: spawn a demo entity for the user to play with ─
