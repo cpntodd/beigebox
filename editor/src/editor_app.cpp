@@ -28,6 +28,7 @@
 #include "panels/entity_list.h"
 #include "panels/ai_chat.h"
 #include "panels/properties_grid.h"
+#include "panels/event_editor.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -96,6 +97,7 @@ int main(int argc, char* argv[])
     beigebox::EntityListPanel entityList(ecs, lua);
     beigebox::AIChatPanel     aiChat(tools);
     beigebox::PropertiesGrid  propGrid(ecs);
+    beigebox::EventEditor     eventEditor(ecs, lua);
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -164,6 +166,7 @@ int main(int argc, char* argv[])
         // ── Editor Panels ────────────────────────────────────
         entityList.Draw();
         propGrid.Draw();
+        eventEditor.Draw();
         aiChat.Draw();
 
         // ── Render ───────────────────────────────────────────

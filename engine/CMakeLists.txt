@@ -8,11 +8,12 @@ add_library(beigebox_engine STATIC
     src/core/fixed_point.cpp
     src/render/isometric.cpp
     src/render/renderer.cpp
+    src/render/texture.cpp
     src/lua/lua_bridge.cpp
     src/ecs/systems.cpp
     src/world/thaw_grid.cpp
-    # ── Future sources added below ───────────────────────────
-    # src/net/lockstep.cpp
+    src/world/map_generator.cpp
+    src/net/lockstep.cpp
 )
 
 # ── Include paths ────────────────────────────────────────────
@@ -21,6 +22,7 @@ target_include_directories(beigebox_engine
         include
     PRIVATE
         src
+        ${stb_SOURCE_DIR}
 )
 
 # ── Compile definitions ─────────────────────────────────────

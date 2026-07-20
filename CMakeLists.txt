@@ -51,6 +51,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sol2)
 
+# STB — Single-header image loading (public domain)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG        master
+)
+FetchContent_MakeAvailable(stb)
+
 # Dear ImGui — Editor UI (docking branch)
 if(BUILD_EDITOR)
     FetchContent_Declare(

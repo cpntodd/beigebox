@@ -24,9 +24,11 @@ add_executable(mad_editor
     src/mcp/tool_registry.cpp
     src/mcp/tools.cpp
     src/mcp/json_rpc.cpp
+    src/mcp/llm_client.cpp
     src/panels/entity_list.cpp
     src/panels/ai_chat.cpp
     src/panels/properties_grid.cpp
+    src/panels/event_editor.cpp
     ${IMGUI_SOURCES}
 )
 

@@ -39,9 +39,15 @@ public:
     void EndFrame();
 
     // Draw an isometric tile grid.
-    // gridW, gridH: grid dimensions in tiles
-    // cameraX, cameraY: top-left screen offset in pixels (for scrolling)
     void DrawTileGrid(int gridW, int gridH, int cameraX, int cameraY);
+
+    // Draw the thaw overlay — colors tiles based on heat level.
+    // heatData: width*height array of uint8_t heat values (0-255).
+    void DrawThawOverlay(int gridW, int gridH, int cameraX, int cameraY,
+                         const uint8_t* heatData, const uint8_t* stateData);
+
+    // Check if GPU thaw shader is available (requires GL 3.1+).
+    bool HasGpuThaw() const { return hasGpuThaw_; }
 
     // Get screen dimensions from the current viewport.
     int ScreenWidth() const { return screenW_; }
@@ -54,13 +60,19 @@ private:
 
     // OpenGL objects
     GLuint shaderProgram_ = 0;
+    GLuint thawShaderProgram_ = 0;
+    GLuint thawGradientTex_ = 0;
     GLuint vao_ = 0;
     GLuint vbo_ = 0;
     GLuint ebo_ = 0;
+    GLuint thawVao_ = 0;
+    GLuint thawVbo_ = 0;
 
     // Uniform locations
     GLint uScreenSize_ = -1;
     GLint uCameraOffset_ = -1;
+
+    bool hasGpuThaw_ = false;
 
     // Helpers
     GLuint CompileShader(GLenum type, const char* source);
