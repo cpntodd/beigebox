@@ -1,16 +1,18 @@
 // editor/src/panels/menu_builder.h
 // ─────────────────────────────────────────────────────────────
-// Menu Builder — GUI screen designer for game menus and HUD.
+// Menu Builder — WYSIWYG GUI screen designer.
 //
-// Per-screen JSON files in ui/menus/{screen}.json.
-// 14+ widget types with anchor+grid layout.
-// Live ImGui preview with working button callbacks.
+// Vertical widget palette (drag to canvas) → visual canvas
+// with move/resize/snap → hierarchy tree → properties panel.
+// Toggle Design (wireframe) / Preview (styled) modes.
+// Per-screen JSON in ui/menus/{screen}.json.
 // Exports to standalone .lua files for the game runtime.
 // ─────────────────────────────────────────────────────────────
 #pragma once
 
 #include <string>
 #include <vector>
+#include <set>
 #include <functional>
 #include <imgui.h>
 #include <nlohmann/json.hpp>
@@ -38,6 +40,7 @@ enum class Anchor
 struct WidgetDef
 {
     int  id = 0;
+    int  parentId = -1;  // -1 = root level, otherwise parent widget id
     WidgetType type = WidgetType::Button;
     std::string name;
 
@@ -45,7 +48,7 @@ struct WidgetDef
     Anchor anchor = Anchor::Center;
     int    offsetX = 0, offsetY = 0;
     int    width = 200, height = 40;
-    int    gridRow = 0, gridCol = 0; // for grid layout within panels
+    int    gridRow = 0, gridCol = 0;
 
     // Appearance
     std::string text;
@@ -54,16 +57,18 @@ struct WidgetDef
     float  colorR = 1.0f, colorG = 1.0f, colorB = 1.0f, colorA = 1.0f;
 
     // Behavior
-    std::string onClick;      // Lua callback name
-    std::string onHover;
-    std::string binding;      // data binding (e.g. "player.hp")
+    std::string onClick;
+    std::string binding;
 
     // Type-specific
-    float  minVal = 0, maxVal = 100, curVal = 50;  // Slider/ProgressBar
-    bool   checked = false;                          // Checkbox
-    std::vector<std::string> options;                // Dropdown/ListBox
+    float  minVal = 0, maxVal = 100, curVal = 50;
+    bool   checked = false;
+    std::vector<std::string> options;
     int    selectedOption = 0;
-    std::vector<int> children;                       // Panel/TabGroup/ScrollArea child widget IDs
+
+    // Hierarchy
+    bool   visible = true;
+    bool   locked  = false;
 };
 
 // ── Screen definition ───────────────────────────────────────
@@ -72,7 +77,6 @@ struct ScreenDef
     std::string name;
     std::string background;
     std::string music;
-    std::string transition;  // "fade", "slide_left", "none"
     std::vector<WidgetDef> widgets;
     int    screenW = 1920, screenH = 1080;
 };
@@ -87,25 +91,46 @@ public:
     void SetRootPath(const std::string& p) { rootPath_ = p; }
     void Draw();
 
+    // Widget type icon (Unicode) for palette
+    static const char* WidgetIcon(WidgetType t);
+    static const char* WidgetTypeName(WidgetType t);
+    static const char* AnchorName(Anchor a);
+
 private:
-    // ── Tabs ─────────────────────────────────────────────────
-    void DrawDesignerTab();
-    void DrawWidgetProps();
-    void DrawPreviewTab();
-    void DrawExportTab();
+    // ── Layout regions ───────────────────────────────────────
+    void DrawPalette();          // left sidebar: vertical widget icons
+    void DrawCanvas();           // center: WYSIWYG design surface
+    void DrawHierarchyTree();    // right panel: parent-child tree
+    void DrawPropertiesPanel();  // bottom or overlay: selected widget props
 
-    // ── Widget creation ──────────────────────────────────────
-    void AddWidget(WidgetType type);
+    // ── Canvas rendering ────────────────────────────────────
+    void RenderDesignCanvas();   // wireframe mode
+    void RenderPreviewCanvas();  // styled mode
+    void DrawWidgetOnCanvas(const WidgetDef& w);
+    void DrawResizeHandles(const WidgetDef& w);
+    void DrawAnchorHandle(const WidgetDef& w);
+    void DrawSnapGuides();
+    void DrawMarqueeRect();
+
+    // ── Canvas interaction ───────────────────────────────────
+    void HandleCanvasInput();
+    void HandleDragDrop();
+    int  HitTest(int mx, int my) const;  // returns widget index at point
+    ImVec2 AnchorToCanvasPos(const WidgetDef& w) const;
+    void StartMoving(int widgetIdx, int mx, int my);
+    void StartResizing(int widgetIdx, int handle, int mx, int my);
+    void ApplySnap(int& x, int& y, int w, int h);
+
+    // ── Widget management ────────────────────────────────────
+    void AddWidget(WidgetType type, int x, int y);
     void RemoveWidget(int index);
-    void DuplicateWidget(int index);
+    void BringToFront(int index);
+    void SendToBack(int index);
 
-    // ── Preview rendering ────────────────────────────────────
-    void RenderPreviewWidget(const WidgetDef& w);
-    ImVec2 AnchorToScreenPos(Anchor anchor, int offsetX, int offsetY, int w, int h) const;
-
-    // ── Layout helpers ───────────────────────────────────────
-    const char* WidgetTypeName(WidgetType t) const;
-    const char* AnchorName(Anchor a) const;
+    // ── Hierarchy helpers ────────────────────────────────────
+    std::vector<int> GetChildrenOf(int parentId) const;
+    void DrawHierarchyNode(int widgetIdx, int depth);
+    int  GetRootParent(int widgetIdx) const;
 
     // ── I/O ──────────────────────────────────────────────────
     void NewScreen();
@@ -121,20 +146,38 @@ private:
     std::string  rootPath_ = ".";
 
     ScreenDef    screen_;
-    int          selectedWidget_ = -1;
     int          widgetIdCounter_ = 1;
+
+    // Selection
+    std::set<int> selectedWidgets_;  // multi-select support
+    int  hoveredWidget_ = -1;
+
+    // Canvas interaction state
+    bool  designMode_   = true;  // true=wireframe, false=styled preview
+    bool  dragging_     = false;
+    bool  resizing_     = false;
+    bool  marqueeSelect_ = false;
+    int   resizeHandle_ = -1;    // 0-7 = corner/edge handle index, -1 = none
+    ImVec2 dragStartPos_;
+    ImVec2 dragOffset_;
+    ImVec2 marqueeStart_;
+    ImVec2 marqueeEnd_;
+    int   snappedX_ = 0, snappedY_ = 0;
+    bool  showSnapGuides_ = false;
+    ImVec2 snapLineH_, snapLineV_;
+
+    // Canvas viewport
+    float canvasScale_  = 0.4f;
+    float canvasOffsetX_ = 0, canvasOffsetY_ = 0;
+    int   canvasW_ = 1920, canvasH_ = 1080;
 
     // UI state
     char  screenNameBuf_[64] = {};
-    char  screenFilter_[64]  = {};
-    int   activeTab_ = 0;
     std::vector<std::string> screenList_;
     bool  showNewDialog_ = false;
-
-    // Preview state
-    bool  previewRunning_ = false;
-    int   previewW_ = 960, previewH_ = 540;
-    float previewScale_ = 0.5f;
+    bool  showExportDialog_ = false;
+    bool  showAnchorPresets_ = false;
 };
 
 } // namespace beigebox
+

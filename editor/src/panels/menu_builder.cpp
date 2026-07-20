@@ -1,726 +1,638 @@
 // editor/src/panels/menu_builder.cpp
 // ─────────────────────────────────────────────────────────────
-// Menu Builder — full implementation.
+// Menu Builder — WYSIWYG with drag-drop canvas + hierarchy.
 // ─────────────────────────────────────────────────────────────
 
 #include "menu_builder.h"
 #include "ai_chat.h"
-
 #include <imgui.h>
 #include <SDL2/SDL.h>
 #include <nlohmann/json.hpp>
-
 #include <dirent.h>
 #include <sys/stat.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <sstream>
 #include <algorithm>
 
 namespace beigebox {
-
 using json = nlohmann::json;
+using WT = WidgetType;
 
-// ═════════════════════════════════════════════════════════════
-// Helpers
-// ═════════════════════════════════════════════════════════════
+// C++17 enum-class aliases (avoid C++20 `using enum`)
+constexpr WT Button = WT::Button, Label = WT::Label, Image = WT::Image;
+constexpr WT Panel = WT::Panel, Slider = WT::Slider, Checkbox = WT::Checkbox;
+constexpr WT Dropdown = WT::Dropdown, TextInput = WT::TextInput;
+constexpr WT ProgressBar = WT::ProgressBar, Spacer = WT::Spacer;
+constexpr WT TabGroup = WT::TabGroup, ScrollArea = WT::ScrollArea;
+constexpr WT ListBox = WT::ListBox, ColorPicker = WT::ColorPicker;
 
-MenuBuilder::MenuBuilder()
-{
-    screen_.name = "MainMenu";
-    screen_.screenW = 1920;
-    screen_.screenH = 1080;
-}
-
-void MenuBuilder::Log(const std::string& msg)
-{
-    if (aiChat_) aiChat_->AppendMessage("system", "[Menu] " + msg);
-    SDL_Log("[Menu] %s", msg.c_str());
-}
-
-std::string MenuBuilder::MenusDir() const
-{
-    return rootPath_ + "/ui/menus";
-}
-
-const char* MenuBuilder::WidgetTypeName(WidgetType t) const
-{
+// Icon table
+const char* MenuBuilder::WidgetIcon(WidgetType t) {
     switch (t) {
-        case WidgetType::Button: return "Button";
-        case WidgetType::Label: return "Label";
-        case WidgetType::Image: return "Image";
-        case WidgetType::Panel: return "Panel";
-        case WidgetType::Slider: return "Slider";
-        case WidgetType::Checkbox: return "Checkbox";
-        case WidgetType::Dropdown: return "Dropdown";
-        case WidgetType::TextInput: return "TextInput";
-        case WidgetType::ProgressBar: return "ProgressBar";
-        case WidgetType::Spacer: return "Spacer";
-        case WidgetType::TabGroup: return "TabGroup";
-        case WidgetType::ScrollArea: return "ScrollArea";
-        case WidgetType::ListBox: return "ListBox";
-        case WidgetType::ColorPicker: return "ColorPicker";
+        case Button: return "BTN"; case Label: return "LBL";
+        case Image: return "IMG"; case Panel: return "PNL";
+        case Slider: return "SLD"; case Checkbox: return "CHK";
+        case Dropdown: return "DRO"; case TextInput: return "TXT";
+        case ProgressBar: return "BAR"; case Spacer: return "SPC";
+        case TabGroup: return "TAB"; case ScrollArea: return "SCR";
+        case ListBox: return "LST"; case ColorPicker: return "CLR";
+        default: return "?";
+    }
+}
+
+const char* MenuBuilder::WidgetTypeName(WidgetType t) {
+    switch (t) {
+        case Button: return "Button"; case Label: return "Label";
+        case Image: return "Image"; case Panel: return "Panel";
+        case Slider: return "Slider"; case Checkbox: return "Checkbox";
+        case Dropdown: return "Dropdown"; case TextInput: return "TextInput";
+        case ProgressBar: return "ProgressBar"; case Spacer: return "Spacer";
+        case TabGroup: return "TabGroup"; case ScrollArea: return "ScrollArea";
+        case ListBox: return "ListBox"; case ColorPicker: return "ColorPicker";
         default: return "???";
     }
 }
 
-const char* MenuBuilder::AnchorName(Anchor a) const
-{
+const char* MenuBuilder::AnchorName(Anchor a) {
     switch (a) {
-        case Anchor::TopLeft: return "top-left";
-        case Anchor::TopCenter: return "top-center";
-        case Anchor::TopRight: return "top-right";
-        case Anchor::CenterLeft: return "center-left";
-        case Anchor::Center: return "center";
-        case Anchor::CenterRight: return "center-right";
-        case Anchor::BottomLeft: return "bottom-left";
-        case Anchor::BottomCenter: return "bottom-center";
-        case Anchor::BottomRight: return "bottom-right";
-        default: return "center";
+        case Anchor::TopLeft: return "top-left"; case Anchor::TopCenter: return "top-center";
+        case Anchor::TopRight: return "top-right"; case Anchor::CenterLeft: return "center-left";
+        case Anchor::Center: return "center"; case Anchor::CenterRight: return "center-right";
+        case Anchor::BottomLeft: return "bottom-left"; case Anchor::BottomCenter: return "bottom-center";
+        case Anchor::BottomRight: return "bottom-right"; default: return "center";
     }
 }
 
-ImVec2 MenuBuilder::AnchorToScreenPos(Anchor anchor, int ox, int oy, int w, int h) const
-{
-    float sx = 0, sy = 0;
-    float sw = static_cast<float>(previewW_);
-    float sh = static_cast<float>(previewH_);
+MenuBuilder::MenuBuilder() { screen_.name = "MainMenu"; }
+void MenuBuilder::Log(const std::string& msg) {
+    if (aiChat_) aiChat_->AppendMessage("system", "[Menu] " + msg);
+    SDL_Log("[Menu] %s", msg.c_str());
+}
+std::string MenuBuilder::MenusDir() const { return rootPath_ + "/ui/menus"; }
 
-    switch (anchor) {
-        case Anchor::TopLeft:      sx = 0;           sy = 0;           break;
-        case Anchor::TopCenter:    sx = sw/2 - w/2;   sy = 0;           break;
-        case Anchor::TopRight:     sx = sw - w;       sy = 0;           break;
-        case Anchor::CenterLeft:   sx = 0;           sy = sh/2 - h/2;   break;
-        case Anchor::Center:       sx = sw/2 - w/2;  sy = sh/2 - h/2;   break;
-        case Anchor::CenterRight:  sx = sw - w;      sy = sh/2 - h/2;   break;
-        case Anchor::BottomLeft:   sx = 0;           sy = sh - h;       break;
-        case Anchor::BottomCenter: sx = sw/2 - w/2;  sy = sh - h;       break;
-        case Anchor::BottomRight:  sx = sw - w;      sy = sh - h;       break;
-    }
-    return ImVec2(sx + ox, sy + oy);
+std::vector<int> MenuBuilder::GetChildrenOf(int parentId) const {
+    std::vector<int> r;
+    for (int i = 0; i < (int)screen_.widgets.size(); ++i)
+        if (screen_.widgets[i].parentId == parentId) r.push_back(i);
+    return r;
 }
 
-// ═════════════════════════════════════════════════════════════
-// Main Draw
-// ═════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// MAIN DRAW
+// ═══════════════════════════════════════════════════════════
 
-void MenuBuilder::Draw()
-{
+void MenuBuilder::Draw() {
     ImGui::Begin("Menu Builder");
+    if (ImGui::Button("New")) showNewDialog_ = true;
+    ImGui::SameLine();
+    if (ImGui::Button("Save")) SaveScreen();
+    ImGui::SameLine();
+    if (ImGui::Button("Load...")) RefreshScreenList();
+    ImGui::SameLine();
+    ImGui::Text("Screen: %s", screen_.name.c_str());
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 200);
+    ImGui::Checkbox("Design", &designMode_);
+    ImGui::SameLine();
+    if (ImGui::Button("Export")) showExportDialog_ = true;
+    ImGui::Separator();
 
-    if (ImGui::BeginTabBar("##menuTabs"))
-    {
-        if (ImGui::BeginTabItem("Designer")) { DrawDesignerTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Preview"))  { DrawPreviewTab(); ImGui::EndTabItem(); }
-        if (ImGui::BeginTabItem("Export"))   { DrawExportTab(); ImGui::EndTabItem(); }
-        ImGui::EndTabBar();
+    float palW = 52, hierW = 200;
+    ImGui::Columns(3, "##mbCols", false);
+    ImGui::SetColumnWidth(0, palW);
+    ImGui::SetColumnWidth(1, ImGui::GetContentRegionAvail().x - hierW - palW - 10);
+    ImGui::SetColumnWidth(2, hierW);
+    DrawPalette(); ImGui::NextColumn();
+    DrawCanvas(); ImGui::NextColumn();
+    DrawHierarchyTree(); ImGui::NextColumn();
+    ImGui::Columns(1);
+
+    if (showNewDialog_) {
+        ImGui::OpenPopup("New Screen");
+        if (ImGui::BeginPopupModal("New Screen", &showNewDialog_)) {
+            ImGui::InputText("Name", screenNameBuf_, sizeof(screenNameBuf_));
+            if (ImGui::Button("Create") && screenNameBuf_[0]) {
+                screen_.name = screenNameBuf_; screen_.widgets.clear();
+                selectedWidgets_.clear(); showNewDialog_ = false;
+            }
+            ImGui::SameLine(); if (ImGui::Button("Cancel")) showNewDialog_ = false;
+            ImGui::EndPopup();
+        }
     }
-
+    if (showExportDialog_) {
+        ImGui::OpenPopup("Export Lua");
+        if (ImGui::BeginPopupModal("Export Lua", &showExportDialog_)) {
+            ImGui::Text("Export %s.lua?", screen_.name.c_str());
+            if (ImGui::Button("Export")) { ExportLua(); showExportDialog_ = false; }
+            ImGui::SameLine(); if (ImGui::Button("Cancel")) showExportDialog_ = false;
+            ImGui::EndPopup();
+        }
+    }
     ImGui::End();
 }
 
-// ── Designer Tab ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// PALETTE
+// ═══════════════════════════════════════════════════════════
 
-void MenuBuilder::DrawDesignerTab()
-{
-    // ── Screen management toolbar ────────────────────────────
-    if (ImGui::Button("New Screen"))
-        showNewDialog_ = true;
-    ImGui::SameLine();
-    if (ImGui::Button("Save"))
-        SaveScreen();
-    ImGui::SameLine();
-    if (ImGui::Button("Load..."))
-        RefreshScreenList();
-    ImGui::SameLine();
-    ImGui::Text("Screen: %s", screen_.name.c_str());
-
-    ImGui::Separator();
-
-    // ── Two-panel layout ─────────────────────────────────────
-    // Left: widget list + add buttons
-    ImGui::BeginChild("##leftPanel", ImVec2(200, 0), true);
-
-    ImGui::Text("Add Widget:");
-    if (ImGui::Button("Button"))     AddWidget(WidgetType::Button);
-    if (ImGui::Button("Label"))      AddWidget(WidgetType::Label);
-    if (ImGui::Button("Image"))      AddWidget(WidgetType::Image);
-    if (ImGui::Button("Panel"))      AddWidget(WidgetType::Panel);
-    if (ImGui::Button("Slider"))     AddWidget(WidgetType::Slider);
-    if (ImGui::Button("Checkbox"))   AddWidget(WidgetType::Checkbox);
-    if (ImGui::Button("Dropdown"))   AddWidget(WidgetType::Dropdown);
-    if (ImGui::Button("TextInput"))  AddWidget(WidgetType::TextInput);
-    if (ImGui::Button("ProgressBar"))AddWidget(WidgetType::ProgressBar);
-    if (ImGui::Button("Spacer"))     AddWidget(WidgetType::Spacer);
-    if (ImGui::Button("TabGroup"))   AddWidget(WidgetType::TabGroup);
-    if (ImGui::Button("ScrollArea")) AddWidget(WidgetType::ScrollArea);
-    if (ImGui::Button("ListBox"))    AddWidget(WidgetType::ListBox);
-    if (ImGui::Button("ColorPicker"))AddWidget(WidgetType::ColorPicker);
-
-    ImGui::Separator();
-    ImGui::Text("Widgets (%zu):", screen_.widgets.size());
-
-    for (int i = 0; i < static_cast<int>(screen_.widgets.size()); ++i)
-    {
-        auto& w = screen_.widgets[i];
-        ImGui::PushID(i);
-        std::string label = std::string(WidgetTypeName(w.type)) + ": " +
-            (w.name.empty() ? w.text.substr(0, 15) : w.name);
-        if (ImGui::Selectable(label.c_str(), selectedWidget_ == i))
-            selectedWidget_ = i;
-
-        if (ImGui::BeginPopupContextItem())
-        {
-            if (ImGui::MenuItem("Duplicate")) DuplicateWidget(i);
-            if (ImGui::MenuItem("Delete"))   RemoveWidget(i);
-            ImGui::EndPopup();
+void MenuBuilder::DrawPalette() {
+    ImGui::TextDisabled("Widgets"); ImGui::Separator();
+    static const WidgetType types[] = {
+        Button, Label, Image, Panel, Slider, Checkbox, Dropdown, TextInput,
+        ProgressBar, Spacer, TabGroup, ScrollArea, ListBox, ColorPicker
+    };
+    for (auto t : types) {
+        ImGui::PushID((int)t);
+        std::string label = std::string(WidgetIcon(t)) + "##" + WidgetTypeName(t);
+        ImGui::Button(label.c_str(), ImVec2(40, 30));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", WidgetTypeName(t));
+        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+            int ti = (int)t;
+            ImGui::SetDragDropPayload("MENU_WIDGET_TYPE", &ti, sizeof(ti));
+            ImGui::Text("%s", WidgetTypeName(t));
+            ImGui::EndDragDropSource();
         }
         ImGui::PopID();
     }
-    ImGui::EndChild();
-    ImGui::SameLine();
-
-    // Right: widget properties
-    ImGui::BeginChild("##rightPanel", ImVec2(0, 0), false);
-    DrawWidgetProps();
-    ImGui::EndChild();
-
-    // ── New screen dialog ────────────────────────────────────
-    if (showNewDialog_)
-    {
-        ImGui::OpenPopup("New Screen");
-        if (ImGui::BeginPopupModal("New Screen", &showNewDialog_))
-        {
-            ImGui::InputText("Name", screenNameBuf_, sizeof(screenNameBuf_));
-            if (ImGui::Button("Create") && screenNameBuf_[0])
-            {
-                screen_.name = screenNameBuf_;
-                screen_.widgets.clear();
-                selectedWidget_ = -1;
-                showNewDialog_ = false;
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) showNewDialog_ = false;
-            ImGui::EndPopup();
-        }
-    }
 }
 
-// ── Widget Properties Panel ─────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════════════════════════
 
-void MenuBuilder::DrawWidgetProps()
-{
-    if (selectedWidget_ < 0 || selectedWidget_ >= static_cast<int>(screen_.widgets.size()))
-    {
-        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
-            "Select a widget to edit its properties.");
-        return;
-    }
-
-    auto& w = screen_.widgets[selectedWidget_];
-    ImGui::Text("Editing: %s", WidgetTypeName(w.type));
-    ImGui::Separator();
-
-    // Name
-    ImGui::InputText("ID", &w.name[0], w.name.size() + 1);
-    if (w.name.size() < 64) w.name.resize(64);
-
-    // Layout
-    ImGui::Text("Layout:");
-    int anchorIdx = static_cast<int>(w.anchor);
-    if (ImGui::Combo("Anchor", &anchorIdx,
-            [](void*, int idx, const char** out) {
-                static const char* names[] = {"TopLeft","TopCenter","TopRight",
-                    "CenterLeft","Center","CenterRight",
-                    "BottomLeft","BottomCenter","BottomRight"};
-                *out = names[idx]; return true;
-            }, nullptr, 9))
-        w.anchor = static_cast<Anchor>(anchorIdx);
-
-    ImGui::InputInt("Offset X", &w.offsetX);
-    ImGui::InputInt("Offset Y", &w.offsetY);
-    ImGui::InputInt("Width", &w.width);
-    ImGui::InputInt("Height", &w.height);
-    ImGui::InputInt("Grid Row", &w.gridRow);
-    ImGui::InputInt("Grid Col", &w.gridCol);
-
-    ImGui::Separator();
-    ImGui::Text("Appearance:");
-
-    if (w.type != WidgetType::Spacer && w.type != WidgetType::Panel)
-    {
-        ImGui::InputText("Text", &w.text[0], w.text.size() + 1);
-        if (w.text.size() < 128) w.text.resize(128);
-    }
-
-    if (w.type == WidgetType::Image)
-    {
-        ImGui::InputText("Image", &w.image[0], w.image.size() + 1);
-        if (w.image.size() < 128) w.image.resize(128);
-    }
-
-    ImGui::InputInt("Font Size", &w.fontSize);
-    ImGui::ColorEdit4("Color", &w.colorR, ImGuiColorEditFlags_NoInputs);
-
-    ImGui::Separator();
-    ImGui::Text("Behavior:");
-
-    ImGui::InputText("OnClick", &w.onClick[0], w.onClick.size() + 1);
-    if (w.onClick.size() < 64) w.onClick.resize(64);
-
-    ImGui::InputText("Data Binding", &w.binding[0], w.binding.size() + 1);
-    if (w.binding.size() < 64) w.binding.resize(64);
-
-    // Type-specific params
-    if (w.type == WidgetType::Slider || w.type == WidgetType::ProgressBar)
-    {
-        ImGui::SliderFloat("Value", &w.curVal, w.minVal, w.maxVal);
-        ImGui::InputFloat("Min", &w.minVal);
-        ImGui::InputFloat("Max", &w.maxVal);
-    }
-    if (w.type == WidgetType::Checkbox)
-        ImGui::Checkbox("Checked", &w.checked);
-    if (w.type == WidgetType::Dropdown || w.type == WidgetType::ListBox)
-    {
-        ImGui::InputInt("Selected", &w.selectedOption);
-        static char optBuf[128] = {};
-        ImGui::InputText("Add Option", optBuf, sizeof(optBuf));
-        ImGui::SameLine();
-        if (ImGui::Button("+") && optBuf[0])
-        {
-            w.options.push_back(optBuf);
-            optBuf[0] = '\0';
-        }
-        for (int i = 0; i < static_cast<int>(w.options.size()); ++i)
-        {
-            ImGui::BulletText("%s", w.options[i].c_str());
-            ImGui::SameLine();
-            ImGui::PushID(9000 + i);
-            if (ImGui::SmallButton("X"))
-                w.options.erase(w.options.begin() + i);
-            ImGui::PopID();
-        }
-    }
-}
-
-// ── Widget CRUD ─────────────────────────────────────────────
-
-void MenuBuilder::AddWidget(WidgetType type)
-{
-    WidgetDef w;
-    w.id = widgetIdCounter_++;
-    w.type = type;
-    w.name = std::string(WidgetTypeName(type)) + "_" + std::to_string(w.id);
-    if (type == WidgetType::Button) w.text = "Button";
-    if (type == WidgetType::Label)  w.text = "Label";
-    screen_.widgets.push_back(w);
-    selectedWidget_ = static_cast<int>(screen_.widgets.size()) - 1;
-}
-
-void MenuBuilder::RemoveWidget(int index)
-{
-    if (index >= 0 && index < static_cast<int>(screen_.widgets.size()))
-    {
-        screen_.widgets.erase(screen_.widgets.begin() + index);
-        if (selectedWidget_ >= static_cast<int>(screen_.widgets.size()))
-            selectedWidget_ = static_cast<int>(screen_.widgets.size()) - 1;
-    }
-}
-
-void MenuBuilder::DuplicateWidget(int index)
-{
-    if (index >= 0 && index < static_cast<int>(screen_.widgets.size()))
-    {
-        WidgetDef dup = screen_.widgets[index];
-        dup.id = widgetIdCounter_++;
-        dup.name += "_copy";
-        screen_.widgets.push_back(dup);
-    }
-}
-
-// ── Preview Tab ─────────────────────────────────────────────
-
-void MenuBuilder::DrawPreviewTab()
-{
-    ImGui::Text("Live Preview — %s", screen_.name.c_str());
-    ImGui::SameLine();
-    ImGui::SliderFloat("Scale", &previewScale_, 0.25f, 1.0f, "%.1f");
-    ImGui::SameLine();
-    if (ImGui::Button("Refresh"))
-        previewRunning_ = true;
-
-    previewW_ = static_cast<int>(screen_.screenW * previewScale_);
-    previewH_ = static_cast<int>(screen_.screenH * previewScale_);
-
-    ImGui::Separator();
-
-    // Preview canvas
-    ImVec2 canvasSize(previewW_ + 4, previewH_ + 4);
-    ImGui::BeginChild("##previewCanvas", canvasSize, true,
+void MenuBuilder::DrawCanvas() {
+    ImGui::BeginChild("##mbCanvas", ImVec2(0, 0), true,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+    ImVec2 cp = ImGui::GetCursorScreenPos();
+    ImVec2 ca = ImGui::GetContentRegionAvail();
+    float cw = ca.x - 4, ch = ca.y - 4;
+    canvasScale_ = std::min(cw / screen_.screenW, ch / screen_.screenH);
+    canvasW_ = (int)(screen_.screenW * canvasScale_);
+    canvasH_ = (int)(screen_.screenH * canvasScale_);
+    canvasOffsetX_ = cp.x + (cw - canvasW_) / 2.0f;
+    canvasOffsetY_ = cp.y + (ch - canvasH_) / 2.0f;
 
     ImDrawList* dl = ImGui::GetWindowDrawList();
-    ImVec2 canvasPos = ImGui::GetCursorScreenPos();
+    dl->AddRectFilled(ImVec2(canvasOffsetX_, canvasOffsetY_),
+        ImVec2(canvasOffsetX_ + canvasW_, canvasOffsetY_ + canvasH_),
+        designMode_ ? IM_COL32(30, 30, 40, 255) : IM_COL32(10, 10, 20, 255));
 
-    // Background
-    dl->AddRectFilled(canvasPos,
-        ImVec2(canvasPos.x + previewW_, canvasPos.y + previewH_),
-        IM_COL32(15, 15, 25, 255));
+    if (designMode_) {
+        int gs = (int)(50 * canvasScale_);
+        for (float x = canvasOffsetX_; x < canvasOffsetX_ + canvasW_; x += gs)
+            dl->AddLine(ImVec2(x, canvasOffsetY_), ImVec2(x, canvasOffsetY_ + canvasH_), IM_COL32(50, 50, 60, 60));
+        for (float y = canvasOffsetY_; y < canvasOffsetY_ + canvasH_; y += gs)
+            dl->AddLine(ImVec2(canvasOffsetX_, y), ImVec2(canvasOffsetX_ + canvasW_, y), IM_COL32(50, 50, 60, 60));
+    }
 
-    // Grid lines
-    for (int x = 0; x < previewW_; x += 50)
-        dl->AddLine(ImVec2(canvasPos.x + x, canvasPos.y),
-            ImVec2(canvasPos.x + x, canvasPos.y + previewH_),
-            IM_COL32(30, 30, 45, 80));
-    for (int y = 0; y < previewH_; y += 50)
-        dl->AddLine(ImVec2(canvasPos.x, canvasPos.y + y),
-            ImVec2(canvasPos.x + previewW_, canvasPos.y + y),
-            IM_COL32(30, 30, 45, 80));
+    dl->AddRect(ImVec2(canvasOffsetX_, canvasOffsetY_),
+        ImVec2(canvasOffsetX_ + canvasW_, canvasOffsetY_ + canvasH_), IM_COL32(100, 100, 120, 150));
 
-    // Render widgets
     for (auto& w : screen_.widgets)
-    {
-        ImVec2 pos = AnchorToScreenPos(w.anchor, w.offsetX, w.offsetY, w.width, w.height);
-        pos.x += canvasPos.x;
-        pos.y += canvasPos.y;
+        if (w.visible) DrawWidgetOnCanvas(w);
 
-        ImU32 col = IM_COL32(
-            static_cast<int>(w.colorR * 255),
-            static_cast<int>(w.colorG * 255),
-            static_cast<int>(w.colorB * 255),
-            static_cast<int>(w.colorA * 255));
+    if (showSnapGuides_) DrawSnapGuides();
+    if (marqueeSelect_) DrawMarqueeRect();
 
-        switch (w.type)
-        {
-            case WidgetType::Button:
-                dl->AddRectFilled(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(50, 100, 180, 255));
-                dl->AddRect(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(100, 150, 255, 200));
-                dl->AddText(ImVec2(pos.x + 8, pos.y + w.height/2 - 8),
-                    IM_COL32(255, 255, 255, 255), w.text.c_str());
-                break;
-
-            case WidgetType::Label:
-                dl->AddText(pos, col, w.text.c_str());
-                break;
-
-            case WidgetType::Image:
-                dl->AddRectFilled(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(40, 40, 60, 200));
-                dl->AddText(pos, IM_COL32(150, 150, 150, 255), w.image.c_str());
-                break;
-
-            case WidgetType::Panel:
-                dl->AddRectFilled(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(25, 25, 40, 220));
-                dl->AddRect(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(60, 60, 90, 150));
-                break;
-
-            case WidgetType::Slider: {
-                dl->AddRectFilled(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(30, 30, 50, 200));
-                float fill = (w.curVal - w.minVal) / (w.maxVal - w.minVal);
-                dl->AddRectFilled(pos,
-                    ImVec2(pos.x + w.width * fill, pos.y + w.height),
-                    IM_COL32(60, 180, 60, 255));
-                break;
-            }
-
-            case WidgetType::Checkbox:
-                dl->AddRect(pos, ImVec2(pos.x + 20, pos.y + 20),
-                    IM_COL32(200, 200, 200, 200));
-                if (w.checked)
-                    dl->AddText(pos, IM_COL32(100, 255, 100, 255), "✓");
-                dl->AddText(ImVec2(pos.x + 28, pos.y), col, w.text.c_str());
-                break;
-
-            case WidgetType::ProgressBar: {
-                dl->AddRect(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(100, 100, 100, 150));
-                float pct = (w.curVal - w.minVal) / (w.maxVal - w.minVal);
-                dl->AddRectFilled(pos,
-                    ImVec2(pos.x + w.width * pct, pos.y + w.height),
-                    IM_COL32(60, 180, 60, 200));
-                break;
-            }
-
-            case WidgetType::Dropdown:
-                dl->AddRectFilled(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(50, 50, 70, 255));
-                dl->AddText(ImVec2(pos.x + 4, pos.y + 2), col,
-                    w.options.empty() ? "Dropdown" : w.options[0].c_str());
-                break;
-
-            default:
-                // Spacer, TextInput, TabGroup, ScrollArea, ListBox, ColorPicker
-                dl->AddRect(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                    IM_COL32(80, 80, 80, 100));
-                dl->AddText(pos, IM_COL32(150, 150, 150, 150), WidgetTypeName(w.type));
-                break;
+    if (ImGui::BeginDragDropTarget()) {
+        const ImGuiPayload* p = ImGui::AcceptDragDropPayload("MENU_WIDGET_TYPE");
+        if (p) {
+            int ti = *(const int*)p->Data;
+            ImVec2 m = ImGui::GetMousePos();
+            int cx = (int)((m.x - canvasOffsetX_) / canvasScale_);
+            int cy = (int)((m.y - canvasOffsetY_) / canvasScale_);
+            AddWidget((WidgetType)ti, cx, cy);
         }
-
-        // Selection highlight
-        if (static_cast<int>(&w - &screen_.widgets[0]) == selectedWidget_)
-        {
-            dl->AddRect(pos, ImVec2(pos.x + w.width, pos.y + w.height),
-                IM_COL32(255, 200, 50, 180), 0, 0, 2.0f);
-        }
+        ImGui::EndDragDropTarget();
     }
 
-    ImGui::EndChild();
+    HandleCanvasInput();
 
-    ImGui::TextDisabled("Preview is rendered via ImGui draw lists. Interactive in runtime build.");
-}
-
-// ── Export Tab ──────────────────────────────────────────────
-
-void MenuBuilder::DrawExportTab()
-{
-    ImGui::Text("Export screen to Lua");
-    ImGui::Separator();
-    ImGui::Text("Screen: %s (%zu widgets)", screen_.name.c_str(), screen_.widgets.size());
-
-    if (ImGui::Button("Export .lua"))
-        ExportLua();
-
-    ImGui::SameLine();
-    if (ImGui::Button("Export All Screens"))
-    {
-        RefreshScreenList();
-        for (auto& name : screenList_)
-        {
-            LoadScreen(name);
-            ExportLua();
-        }
-        Log("Exported all screens.");
-    }
-
-    ImGui::Separator();
-    ImGui::Text("Preview of generated Lua:");
-    ImGui::BeginChild("##luaPreview", ImVec2(0, 0), true);
-
-    std::string lua = "-- " + screen_.name + ".lua (auto-generated)\n";
-    lua += "local M = {}\n\n";
-    lua += "function M.Create(ui)\n";
-    for (auto& w : screen_.widgets)
-    {
-        lua += "  ui:Add" + std::string(WidgetTypeName(w.type)) + "{\n";
-        lua += "    id = \"" + w.name + "\",\n";
-        lua += "    anchor = \"" + std::string(AnchorName(w.anchor)) + "\",\n";
-        lua += "    offsetX = " + std::to_string(w.offsetX) + ",\n";
-        lua += "    offsetY = " + std::to_string(w.offsetY) + ",\n";
-        lua += "    width = " + std::to_string(w.width) + ",\n";
-        lua += "    height = " + std::to_string(w.height) + ",\n";
-        if (!w.text.empty())
-            lua += "    text = \"" + w.text + "\",\n";
-        if (!w.onClick.empty())
-            lua += "    onClick = \"" + w.onClick + "\",\n";
-        lua += "  }\n";
-    }
-    lua += "end\n\n";
-    lua += "return M\n";
-
-    ImGui::TextUnformatted(lua.c_str());
+    ImVec2 ip(canvasOffsetX_ + 4, canvasOffsetY_ + canvasH_ - 18);
+    dl->AddText(ip, IM_COL32(100, 100, 120, 200),
+        ("Canvas: " + std::to_string(screen_.screenW) + "x" + std::to_string(screen_.screenH)).c_str());
     ImGui::EndChild();
 }
 
-// ═════════════════════════════════════════════════════════════
-// File I/O
-// ═════════════════════════════════════════════════════════════
-
-void MenuBuilder::NewScreen()
-{
-    screen_.widgets.clear();
-    selectedWidget_ = -1;
-    widgetIdCounter_ = 1;
-}
-
-void MenuBuilder::SaveScreen()
-{
-    std::string dir = MenusDir();
-    mkdir(dir.c_str(), 0755);
-
-    json j;
-    j["name"] = screen_.name;
-    j["background"] = screen_.background;
-    j["music"] = screen_.music;
-    j["screenW"] = screen_.screenW;
-    j["screenH"] = screen_.screenH;
-
-    json widgets = json::array();
-    for (auto& w : screen_.widgets)
-    {
-        json wj;
-        wj["id"] = w.id;
-        wj["type"] = static_cast<int>(w.type);
-        wj["name"] = w.name;
-        wj["anchor"] = static_cast<int>(w.anchor);
-        wj["offsetX"] = w.offsetX;
-        wj["offsetY"] = w.offsetY;
-        wj["width"] = w.width;
-        wj["height"] = w.height;
-        wj["gridRow"] = w.gridRow;
-        wj["gridCol"] = w.gridCol;
-        if (!w.text.empty()) wj["text"] = w.text;
-        if (!w.image.empty()) wj["image"] = w.image;
-        wj["fontSize"] = w.fontSize;
-        wj["color"] = {w.colorR, w.colorG, w.colorB, w.colorA};
-        if (!w.onClick.empty()) wj["onClick"] = w.onClick;
-        if (!w.binding.empty()) wj["binding"] = w.binding;
-        wj["minVal"] = w.minVal;
-        wj["maxVal"] = w.maxVal;
-        wj["curVal"] = w.curVal;
-        wj["checked"] = w.checked;
-        if (!w.options.empty()) wj["options"] = w.options;
-        wj["selectedOption"] = w.selectedOption;
-        widgets.push_back(wj);
+ImVec2 MenuBuilder::AnchorToCanvasPos(const WidgetDef& w) const {
+    float sx = 0, sy = 0;
+    float sw = (float)canvasW_, sh = (float)canvasH_;
+    float ww = w.width * canvasScale_, wh = w.height * canvasScale_;
+    switch (w.anchor) {
+        case Anchor::TopLeft: break;
+        case Anchor::TopCenter: sx = sw/2 - ww/2; break;
+        case Anchor::TopRight: sx = sw - ww; break;
+        case Anchor::CenterLeft: sy = sh/2 - wh/2; break;
+        case Anchor::Center: sx = sw/2 - ww/2; sy = sh/2 - wh/2; break;
+        case Anchor::CenterRight: sx = sw - ww; sy = sh/2 - wh/2; break;
+        case Anchor::BottomLeft: sy = sh - wh; break;
+        case Anchor::BottomCenter: sx = sw/2 - ww/2; sy = sh - wh; break;
+        case Anchor::BottomRight: sx = sw - ww; sy = sh - wh; break;
     }
-    j["widgets"] = widgets;
-
-    std::string path = dir + "/" + screen_.name + ".json";
-    std::ofstream f(path);
-    f << j.dump(2);
-    f.close();
-    Log("Saved: " + path);
+    sx += w.offsetX * canvasScale_; sy += w.offsetY * canvasScale_;
+    return ImVec2(canvasOffsetX_ + sx, canvasOffsetY_ + sy);
 }
 
-void MenuBuilder::LoadScreen(const std::string& name)
-{
+void MenuBuilder::DrawWidgetOnCanvas(const WidgetDef& w) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 pos = AnchorToCanvasPos(w);
+    float ww = w.width * canvasScale_, wh = w.height * canvasScale_;
+    bool sel = selectedWidgets_.count(w.id) > 0;
+
+    ImU32 fill, border;
+    if (designMode_) {
+        fill = sel ? IM_COL32(60, 120, 200, 80) : IM_COL32(40, 40, 55, 60);
+        border = sel ? IM_COL32(255, 200, 50, 255) : IM_COL32(80, 80, 100, 150);
+    } else {
+        fill = (w.type == Button) ? IM_COL32(50, 100, 180, 220) :
+               (w.type == Panel)  ? IM_COL32(25, 25, 40, 200)  :
+                                    IM_COL32(35, 35, 50, 180);
+        border = sel ? IM_COL32(255, 200, 50, 255) : IM_COL32(80, 80, 100, 120);
+    }
+
+    dl->AddRectFilled(pos, ImVec2(pos.x + ww, pos.y + wh), fill, 4.0f * canvasScale_);
+    dl->AddRect(pos, ImVec2(pos.x + ww, pos.y + wh), border, 0, 0, 1.5f);
+
+    std::string label = designMode_ ?
+        (std::string(WidgetIcon(w.type)) + " " + w.name) :
+        (w.text.empty() ? w.name : w.text);
+    if (ww > 20 && wh > 10)
+        dl->AddText(ImGui::GetFont(), ImGui::GetFontSize() * canvasScale_ * 0.6f,
+            ImVec2(pos.x + 3, pos.y + wh * 0.3f), IM_COL32(220, 220, 220, 255), label.c_str());
+
+    if (sel) DrawResizeHandles(w);
+}
+
+void MenuBuilder::DrawResizeHandles(const WidgetDef& w) {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 pos = AnchorToCanvasPos(w);
+    float ww = w.width * canvasScale_, wh = w.height * canvasScale_, hs = 5;
+    ImU32 hc = IM_COL32(255, 200, 50, 255);
+    ImVec2 h[8] = {{pos.x, pos.y}, {pos.x+ww/2, pos.y}, {pos.x+ww, pos.y},
+        {pos.x+ww, pos.y+wh/2}, {pos.x+ww, pos.y+wh}, {pos.x+ww/2, pos.y+wh},
+        {pos.x, pos.y+wh}, {pos.x, pos.y+wh/2}};
+    for (int i = 0; i < 8; ++i)
+        dl->AddRectFilled(ImVec2(h[i].x-hs/2, h[i].y-hs/2),
+            ImVec2(h[i].x+hs/2, h[i].y+hs/2), hc);
+}
+
+void MenuBuilder::DrawSnapGuides() {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    if (snapLineH_.x > 0)
+        dl->AddLine(ImVec2(canvasOffsetX_, snapLineH_.y),
+            ImVec2(canvasOffsetX_ + canvasW_, snapLineH_.y), IM_COL32(255, 100, 100, 150));
+    if (snapLineV_.y > 0)
+        dl->AddLine(ImVec2(snapLineV_.x, canvasOffsetY_),
+            ImVec2(snapLineV_.x, canvasOffsetY_ + canvasH_), IM_COL32(255, 100, 100, 150));
+}
+
+void MenuBuilder::DrawMarqueeRect() {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 a(marqueeStart_.x, marqueeStart_.y), b(marqueeEnd_.x, marqueeEnd_.y);
+    dl->AddRectFilled(a, b, IM_COL32(100, 150, 255, 40));
+    dl->AddRect(a, b, IM_COL32(100, 150, 255, 180));
+}
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS INPUT
+// ═══════════════════════════════════════════════════════════
+
+int MenuBuilder::HitTest(int mx, int my) const {
+    for (int i = (int)screen_.widgets.size() - 1; i >= 0; --i) {
+        auto& w = screen_.widgets[i];
+        if (!w.visible || w.locked) continue;
+        ImVec2 pos = AnchorToCanvasPos(w);
+        float ww = w.width * canvasScale_, wh = w.height * canvasScale_;
+        if (mx >= pos.x && mx <= pos.x + ww && my >= pos.y && my <= pos.y + wh) return i;
+    }
+    return -1;
+}
+
+void MenuBuilder::HandleCanvasInput() {
+    ImVec2 mouse = ImGui::GetMousePos();
+    int mx = (int)mouse.x, my = (int)mouse.y;
+    bool inCanvas = (mx >= canvasOffsetX_ && mx <= canvasOffsetX_ + canvasW_
+                     && my >= canvasOffsetY_ && my <= canvasOffsetY_ + canvasH_);
+    if (!inCanvas) { hoveredWidget_ = -1; return; }
+    hoveredWidget_ = HitTest(mx, my);
+    bool ctrl = ImGui::GetIO().KeyCtrl, shift = ImGui::GetIO().KeyShift;
+
+    if (ImGui::IsMouseClicked(0)) {
+        int hit = HitTest(mx, my);
+        if (hit >= 0) {
+            auto& w = screen_.widgets[hit];
+            if (ctrl) { if (selectedWidgets_.count(w.id)) selectedWidgets_.erase(w.id); else selectedWidgets_.insert(w.id); }
+            else if (shift) selectedWidgets_.insert(w.id);
+            else if (!selectedWidgets_.count(w.id)) { selectedWidgets_.clear(); selectedWidgets_.insert(w.id); }
+            StartMoving(hit, mx, my);
+        } else {
+            if (!ctrl && !shift) selectedWidgets_.clear();
+            marqueeSelect_ = true; marqueeStart_ = mouse; marqueeEnd_ = mouse;
+        }
+    }
+
+    if (dragging_ && ImGui::IsMouseDragging(0)) {
+        ImVec2 delta = ImGui::GetMouseDragDelta(0);
+        int dx = (int)(delta.x / canvasScale_), dy = (int)(delta.y / canvasScale_);
+        for (int id : selectedWidgets_)
+            for (auto& w : screen_.widgets) if (w.id == id) { w.offsetX += dx; w.offsetY += dy; break; }
+        ImGui::ResetMouseDragDelta(0);
+    }
+
+    if (resizing_ && ImGui::IsMouseDragging(0)) {
+        ImVec2 delta = ImGui::GetMouseDragDelta(0);
+        int dw = (int)(delta.x / canvasScale_), dh = (int)(delta.y / canvasScale_);
+        if (!selectedWidgets_.empty()) {
+            int id = *selectedWidgets_.begin();
+            for (auto& w : screen_.widgets) if (w.id == id) {
+                w.width += dw; w.height += dh;
+                if (w.width < 20) w.width = 20;
+                if (w.height < 14) w.height = 14;
+                break;
+            }
+        }
+        ImGui::ResetMouseDragDelta(0);
+    }
+
+    if (marqueeSelect_ && ImGui::IsMouseDragging(0)) marqueeEnd_ = mouse;
+
+    if (ImGui::IsMouseReleased(0)) {
+        if (marqueeSelect_) {
+            float x1 = std::min(marqueeStart_.x, marqueeEnd_.x), y1 = std::min(marqueeStart_.y, marqueeEnd_.y);
+            float x2 = std::max(marqueeStart_.x, marqueeEnd_.x), y2 = std::max(marqueeStart_.y, marqueeEnd_.y);
+            if (x2-x1 > 4 && y2-y1 > 4) {
+                if (!ctrl && !shift) selectedWidgets_.clear();
+                for (auto& w : screen_.widgets) {
+                    ImVec2 p = AnchorToCanvasPos(w);
+                    float ww = w.width * canvasScale_, wh = w.height * canvasScale_;
+                    if (p.x+ww >= x1 && p.x <= x2 && p.y+wh >= y1 && p.y <= y2) selectedWidgets_.insert(w.id);
+                }
+            }
+            marqueeSelect_ = false;
+        }
+        dragging_ = false; resizing_ = false; showSnapGuides_ = false;
+    }
+
+    if (ImGui::IsMouseClicked(1) && inCanvas) ImGui::OpenPopup("##canvasCtx");
+    if (ImGui::BeginPopup("##canvasCtx")) {
+        if (!selectedWidgets_.empty()) {
+            if (ImGui::MenuItem("Bring to Front")) BringToFront(*selectedWidgets_.begin());
+            if (ImGui::MenuItem("Send to Back")) SendToBack(*selectedWidgets_.begin());
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Delete Selected") && !selectedWidgets_.empty()) {
+            std::vector<int> rm;
+            for (int i = 0; i < (int)screen_.widgets.size(); ++i)
+                if (selectedWidgets_.count(screen_.widgets[i].id)) rm.push_back(i);
+            std::sort(rm.rbegin(), rm.rend());
+            for (int i : rm) screen_.widgets.erase(screen_.widgets.begin() + i);
+            selectedWidgets_.clear();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (ImGui::IsKeyPressed(ImGuiKey_Delete) && !selectedWidgets_.empty()) {
+        std::vector<int> rm;
+        for (int i = 0; i < (int)screen_.widgets.size(); ++i)
+            if (selectedWidgets_.count(screen_.widgets[i].id)) rm.push_back(i);
+        std::sort(rm.rbegin(), rm.rend());
+        for (int i : rm) screen_.widgets.erase(screen_.widgets.begin() + i);
+        selectedWidgets_.clear();
+    }
+}
+
+void MenuBuilder::StartMoving(int, int mx, int my) {
+    dragging_ = true; dragStartPos_ = ImVec2((float)mx, (float)my);
+}
+void MenuBuilder::StartResizing(int, int h, int mx, int my) {
+    resizing_ = true; resizeHandle_ = h; dragStartPos_ = ImVec2((float)mx, (float)my);
+}
+
+// ═══════════════════════════════════════════════════════════
+// HIERARCHY TREE
+// ═══════════════════════════════════════════════════════════
+
+void MenuBuilder::DrawHierarchyTree() {
+    ImGui::TextDisabled("Hierarchy"); ImGui::Separator();
+    ImGui::BeginChild("##hierList", ImVec2(0, ImGui::GetContentRegionAvail().y - 100), false);
+    auto roots = GetChildrenOf(-1);
+    for (int idx : roots) DrawHierarchyNode(idx, 0);
+    if (screen_.widgets.empty())
+        ImGui::TextColored(ImVec4(0.4f, 0.4f, 0.4f, 1), "Drag widgets from palette\nonto the canvas.");
+    ImGui::EndChild();
+    ImGui::Separator();
+    if (ImGui::Button("Anchor Presets")) showAnchorPresets_ = !showAnchorPresets_;
+    if (showAnchorPresets_) {
+        const char* names[9] = {"TL","TC","TR","CL","C","CR","BL","BC","BR"};
+        Anchor vals[9] = {Anchor::TopLeft,Anchor::TopCenter,Anchor::TopRight,
+            Anchor::CenterLeft,Anchor::Center,Anchor::CenterRight,
+            Anchor::BottomLeft,Anchor::BottomCenter,Anchor::BottomRight};
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                int i = r*3+c; if (c>0) ImGui::SameLine();
+                bool active = false;
+                if (!selectedWidgets_.empty()) {
+                    int sid = *selectedWidgets_.begin();
+                    for (auto& w : screen_.widgets) if (w.id == sid) { active = (w.anchor == vals[i]); break; }
+                }
+                if (active) ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.2f, 0.5f, 0.8f, 1));
+                if (ImGui::Button(names[i], ImVec2(22, 22))) {
+                    for (int sid : selectedWidgets_) for (auto& w : screen_.widgets) if (w.id == sid) w.anchor = vals[i];
+                }
+                if (active) ImGui::PopStyleColor();
+            }
+        }
+    }
+}
+
+void MenuBuilder::DrawHierarchyNode(int idx, int depth) {
+    if (idx < 0 || idx >= (int)screen_.widgets.size()) return;
+    auto& w = screen_.widgets[idx];
+    ImGui::PushID(w.id);
+    if (depth > 0) ImGui::Indent(14);
+
+    const char* eye = w.visible ? "[+]" : "[ ]";
+    if (ImGui::SmallButton(eye)) w.visible = !w.visible; ImGui::SameLine();
+    const char* lock = w.locked ? "{L}" : "{ }";
+    if (ImGui::SmallButton(lock)) w.locked = !w.locked; ImGui::SameLine();
+
+    std::string label = std::string(WidgetIcon(w.type)) + " " + w.name;
+    bool sel = selectedWidgets_.count(w.id) > 0;
+    if (ImGui::Selectable(label.c_str(), sel)) {
+        if (!ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeyShift) selectedWidgets_.clear();
+        selectedWidgets_.insert(w.id);
+    }
+
+    if (ImGui::BeginDragDropSource()) {
+        ImGui::SetDragDropPayload("MENU_REPARENT", &w.id, sizeof(w.id));
+        ImGui::Text("Move: %s", w.name.c_str());
+        ImGui::EndDragDropSource();
+    }
+    if (ImGui::BeginDragDropTarget()) {
+        const ImGuiPayload* p = ImGui::AcceptDragDropPayload("MENU_REPARENT");
+        if (p) { int cid = *(const int*)p->Data; for (auto& cw : screen_.widgets) if (cw.id == cid) { cw.parentId = w.id; break; } }
+        ImGui::EndDragDropTarget();
+    }
+
+    if (ImGui::BeginPopupContextItem()) {
+        if (ImGui::MenuItem("Delete")) { screen_.widgets.erase(screen_.widgets.begin() + idx); selectedWidgets_.clear(); ImGui::EndPopup(); ImGui::PopID(); return; }
+        ImGui::EndPopup();
+    }
+
+    auto children = GetChildrenOf(w.id);
+    for (int c : children) DrawHierarchyNode(c, depth + 1);
+    if (depth > 0) ImGui::Unindent(14);
+    ImGui::PopID();
+}
+
+// ═══════════════════════════════════════════════════════════
+// WIDGET CRUD
+// ═══════════════════════════════════════════════════════════
+
+void MenuBuilder::AddWidget(WidgetType type, int x, int y) {
+    WidgetDef w; w.id = widgetIdCounter_++; w.type = type;
+    w.name = std::string(WidgetTypeName(type)) + "_" + std::to_string(w.id);
+    w.width = 200; w.height = 40;
+    if (type == Image) { w.width = 128; w.height = 128; }
+    if (type == Panel) { w.width = 300; w.height = 200; }
+    if (type == Checkbox) { w.width = 160; w.height = 24; }
+    if (type == Slider || type == ProgressBar) { w.width = 200; w.height = 30; }
+    if (type == Spacer) { w.width = 40; w.height = 40; }
+    w.anchor = Anchor::TopLeft; w.offsetX = x; w.offsetY = y;
+    w.text = WidgetTypeName(type);
+    screen_.widgets.push_back(w);
+    selectedWidgets_.clear(); selectedWidgets_.insert(w.id);
+}
+
+void MenuBuilder::RemoveWidget(int i) {
+    if (i >= 0 && i < (int)screen_.widgets.size()) {
+        selectedWidgets_.erase(screen_.widgets[i].id);
+        screen_.widgets.erase(screen_.widgets.begin() + i);
+    }
+}
+
+void MenuBuilder::BringToFront(int i) {
+    if (i >= 0 && i < (int)screen_.widgets.size()) {
+        WidgetDef w = screen_.widgets[i];
+        screen_.widgets.erase(screen_.widgets.begin() + i);
+        screen_.widgets.push_back(w);
+    }
+}
+
+void MenuBuilder::SendToBack(int i) {
+    if (i >= 0 && i < (int)screen_.widgets.size()) {
+        WidgetDef w = screen_.widgets[i];
+        screen_.widgets.erase(screen_.widgets.begin() + i);
+        screen_.widgets.insert(screen_.widgets.begin(), w);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// FILE I/O
+// ═══════════════════════════════════════════════════════════
+
+void MenuBuilder::NewScreen() { screen_.widgets.clear(); selectedWidgets_.clear(); }
+
+void MenuBuilder::RefreshScreenList() {
+    screenList_.clear();
+    std::string dir = MenusDir(); mkdir(dir.c_str(), 0755);
+    DIR* d = opendir(dir.c_str()); if (!d) return;
+    struct dirent* entry;
+    while ((entry = readdir(d)) != nullptr) {
+        std::string n(entry->d_name);
+        if (entry->d_type == DT_REG && n.size() > 5 && n.substr(n.size()-5) == ".json")
+            screenList_.push_back(n.substr(0, n.size()-5));
+    }
+    closedir(d);
+    std::sort(screenList_.begin(), screenList_.end());
+}
+
+void MenuBuilder::LoadScreen(const std::string& name) {
     std::string path = MenusDir() + "/" + name + ".json";
-    std::ifstream f(path);
-    if (!f.good()) { Log("Not found: " + path); return; }
-
+    std::ifstream f(path); if (!f.good()) { Log("Not found: "+path); return; }
     json j = json::parse(f);
     screen_.name = j.value("name", name);
     screen_.background = j.value("background", "");
     screen_.music = j.value("music", "");
     screen_.screenW = j.value("screenW", 1920);
     screen_.screenH = j.value("screenH", 1080);
-
     screen_.widgets.clear();
-    for (auto& wj : j["widgets"])
-    {
+    for (auto& wj : j["widgets"]) {
         WidgetDef w;
-        w.id = wj.value("id", 0);
-        w.type = static_cast<WidgetType>(wj.value("type", 0));
-        w.name = wj.value("name", "");
-        w.anchor = static_cast<Anchor>(wj.value("anchor", 4));
-        w.offsetX = wj.value("offsetX", 0);
-        w.offsetY = wj.value("offsetY", 0);
-        w.width = wj.value("width", 200);
-        w.height = wj.value("height", 40);
-        w.gridRow = wj.value("gridRow", 0);
-        w.gridCol = wj.value("gridCol", 0);
-        w.text = wj.value("text", "");
-        w.image = wj.value("image", "");
+        w.id = wj.value("id", 0); w.parentId = wj.value("parentId", -1);
+        w.type = (WidgetType)wj.value("type", 0); w.name = wj.value("name", "");
+        w.anchor = (Anchor)wj.value("anchor", 4);
+        w.offsetX = wj.value("offsetX", 0); w.offsetY = wj.value("offsetY", 0);
+        w.width = wj.value("width", 200); w.height = wj.value("height", 40);
+        w.text = wj.value("text", ""); w.image = wj.value("image", "");
         w.fontSize = wj.value("fontSize", 18);
         if (wj.contains("color")) {
             w.colorR = wj["color"][0]; w.colorG = wj["color"][1];
             w.colorB = wj["color"][2]; w.colorA = wj["color"][3];
         }
-        w.onClick = wj.value("onClick", "");
-        w.binding = wj.value("binding", "");
-        w.minVal = wj.value("minVal", 0.0f);
-        w.maxVal = wj.value("maxVal", 100.0f);
-        w.curVal = wj.value("curVal", 50.0f);
-        w.checked = wj.value("checked", false);
-        if (wj.contains("options"))
-            for (auto& o : wj["options"]) w.options.push_back(o.get<std::string>());
-        w.selectedOption = wj.value("selectedOption", 0);
+        w.onClick = wj.value("onClick", ""); w.binding = wj.value("binding", "");
+        w.minVal = wj.value("minVal", 0.f); w.maxVal = wj.value("maxVal", 100.f);
+        w.curVal = wj.value("curVal", 50.f); w.checked = wj.value("checked", false);
+        w.visible = wj.value("visible", true); w.locked = wj.value("locked", false);
         screen_.widgets.push_back(w);
     }
-
-    widgetIdCounter_ = screen_.widgets.empty() ? 1 :
-        screen_.widgets.back().id + 1;
-    selectedWidget_ = -1;
+    widgetIdCounter_ = screen_.widgets.empty() ? 1 : screen_.widgets.back().id + 1;
+    selectedWidgets_.clear();
     Log("Loaded: " + path + " (" + std::to_string(screen_.widgets.size()) + " widgets)");
 }
 
-void MenuBuilder::ExportLua()
-{
-    std::string dir = MenusDir();
-    mkdir(dir.c_str(), 0755);
-
-    std::string lua = "-- " + screen_.name + ".lua (auto-generated by M.A.D. Menu Builder)\n";
-    lua += "-- Screen: " + screen_.name + "\n";
-    lua += "-- Widgets: " + std::to_string(screen_.widgets.size()) + "\n\n";
-    lua += "local M = {}\n\n";
-    lua += "function M.Create(ui)\n";
-    lua += "  ui:BeginScreen(\"" + screen_.name + "\")\n";
-    if (!screen_.background.empty())
-        lua += "  ui:SetBackground(\"" + screen_.background + "\")\n";
-    if (!screen_.music.empty())
-        lua += "  ui:SetMusic(\"" + screen_.music + "\")\n\n";
-
-    for (auto& w : screen_.widgets)
-    {
-        lua += "  -- " + std::string(WidgetTypeName(w.type)) + ": " + w.name + "\n";
-        lua += "  ui:Add" + std::string(WidgetTypeName(w.type)) + "{\n";
-        lua += "    id = \"" + w.name + "\",\n";
-        lua += "    anchor = \"" + std::string(AnchorName(w.anchor)) + "\",\n";
-        lua += "    offsetX = " + std::to_string(w.offsetX) + ",\n";
-        lua += "    offsetY = " + std::to_string(w.offsetY) + ",\n";
-        lua += "    width = " + std::to_string(w.width) + ",\n";
-        lua += "    height = " + std::to_string(w.height) + ",\n";
-        if (!w.text.empty())
-            lua += "    text = \"" + w.text + "\",\n";
-        if (!w.image.empty())
-            lua += "    image = \"" + w.image + "\",\n";
-        if (w.fontSize != 18)
-            lua += "    fontSize = " + std::to_string(w.fontSize) + ",\n";
-        if (!w.onClick.empty())
-            lua += "    onClick = \"" + w.onClick + "\",\n";
-        if (!w.binding.empty())
-            lua += "    binding = \"" + w.binding + "\",\n";
-        if (w.type == WidgetType::Slider || w.type == WidgetType::ProgressBar) {
-            lua += "    min = " + std::to_string(w.minVal) + ",\n";
-            lua += "    max = " + std::to_string(w.maxVal) + ",\n";
-            lua += "    value = " + std::to_string(w.curVal) + ",\n";
-        }
-        lua += "  }\n\n";
+void MenuBuilder::SaveScreen() {
+    std::string dir = MenusDir(); mkdir(dir.c_str(), 0755);
+    json j;
+    j["name"] = screen_.name; j["background"] = screen_.background;
+    j["music"] = screen_.music; j["screenW"] = screen_.screenW;
+    j["screenH"] = screen_.screenH;
+    json wa = json::array();
+    for (auto& w : screen_.widgets) {
+        json wj;
+        wj["id"] = w.id; wj["parentId"] = w.parentId;
+        wj["type"] = (int)w.type; wj["name"] = w.name;
+        wj["anchor"] = (int)w.anchor;
+        wj["offsetX"] = w.offsetX; wj["offsetY"] = w.offsetY;
+        wj["width"] = w.width; wj["height"] = w.height;
+        if (!w.text.empty()) wj["text"] = w.text;
+        if (!w.image.empty()) wj["image"] = w.image;
+        wj["fontSize"] = w.fontSize;
+        wj["color"] = {w.colorR, w.colorG, w.colorB, w.colorA};
+        if (!w.onClick.empty()) wj["onClick"] = w.onClick;
+        if (!w.binding.empty()) wj["binding"] = w.binding;
+        wj["minVal"] = w.minVal; wj["maxVal"] = w.maxVal;
+        wj["curVal"] = w.curVal; wj["checked"] = w.checked;
+        wj["visible"] = w.visible; wj["locked"] = w.locked;
+        wa.push_back(wj);
     }
-
-    lua += "  ui:EndScreen()\n";
-    lua += "end\n\n";
-    lua += "-- Callback stubs (implement these in your game logic):\n";
-    for (auto& w : screen_.widgets)
-    {
-        if (!w.onClick.empty())
-            lua += "-- function " + w.onClick + "() end\n";
-    }
-    lua += "\nreturn M\n";
-
-    std::string path = dir + "/" + screen_.name + ".lua";
-    std::ofstream f(path);
-    f << lua;
-    f.close();
-    Log("Exported: " + path);
+    j["widgets"] = wa;
+    std::string path = dir + "/" + screen_.name + ".json";
+    std::ofstream f(path); f << j.dump(2); f.close();
+    Log("Saved: " + path);
 }
 
-void MenuBuilder::RefreshScreenList()
-{
-    screenList_.clear();
-    std::string dir = MenusDir();
-    mkdir(dir.c_str(), 0755);
-
-    DIR* d = opendir(dir.c_str());
-    if (!d) return;
-    struct dirent* entry;
-    while ((entry = readdir(d)) != nullptr)
-    {
-        std::string name(entry->d_name);
-        if (entry->d_type == DT_REG && name.size() > 5 &&
-            name.substr(name.size() - 5) == ".json")
-        {
-            screenList_.push_back(name.substr(0, name.size() - 5));
-        }
+void MenuBuilder::ExportLua() {
+    std::string dir = MenusDir(); mkdir(dir.c_str(), 0755);
+    std::string lua = "-- " + screen_.name + ".lua\nlocal M={}\nfunction M.Create(ui)\n";
+    lua += "  ui:BeginScreen(\"" + screen_.name + "\")\n";
+    for (auto& w : screen_.widgets) {
+        lua += "  ui:Add" + std::string(WidgetTypeName(w.type)) + "{\n";
+        lua += "    id=\"" + w.name + "\",\n";
+        lua += "    anchor=\"" + std::string(AnchorName(w.anchor)) + "\",\n";
+        lua += "    offsetX=" + std::to_string(w.offsetX) + ",\n";
+        lua += "    offsetY=" + std::to_string(w.offsetY) + ",\n";
+        lua += "    width=" + std::to_string(w.width) + ",\n";
+        lua += "    height=" + std::to_string(w.height) + ",\n";
+        if (!w.text.empty()) lua += "    text=\"" + w.text + "\",\n";
+        if (!w.onClick.empty()) lua += "    onClick=\"" + w.onClick + "\",\n";
+        lua += "  }\n";
     }
-    closedir(d);
-    std::sort(screenList_.begin(), screenList_.end());
+    lua += "  ui:EndScreen()\nend\nreturn M\n";
+    std::string path = dir + "/" + screen_.name + ".lua";
+    std::ofstream f(path); f << lua; f.close();
+    Log("Exported: " + path);
 }
 
 } // namespace beigebox
