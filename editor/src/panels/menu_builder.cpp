@@ -98,10 +98,13 @@ void MenuBuilder::Draw() {
     if (ImGui::Button("Export")) showExportDialog_ = true;
     ImGui::Separator();
 
+    float avail = ImGui::GetContentRegionAvail().x;
     float palW = 52, hierW = 200;
+    float canvasW = avail - palW - hierW - 10;
+    if (canvasW < 100) canvasW = 100;
     ImGui::Columns(3, "##mbCols", false);
     ImGui::SetColumnWidth(0, palW);
-    ImGui::SetColumnWidth(1, ImGui::GetContentRegionAvail().x - hierW - palW - 10);
+    ImGui::SetColumnWidth(1, canvasW);
     ImGui::SetColumnWidth(2, hierW);
     DrawPalette(); ImGui::NextColumn();
     DrawCanvas(); ImGui::NextColumn();
@@ -162,11 +165,15 @@ void MenuBuilder::DrawPalette() {
 // ═══════════════════════════════════════════════════════════
 
 void MenuBuilder::DrawCanvas() {
-    ImGui::BeginChild("##mbCanvas", ImVec2(0, 0), true,
+    ImVec2 ca = ImGui::GetContentRegionAvail();
+    float cw = ca.x > 8 ? ca.x - 4 : 100;
+    float ch = ca.y > 8 ? ca.y - 4 : 100;
+    ImGui::BeginChild("##mbCanvas", ImVec2(cw, ch), true,
         ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     ImVec2 cp = ImGui::GetCursorScreenPos();
-    ImVec2 ca = ImGui::GetContentRegionAvail();
-    float cw = ca.x - 4, ch = ca.y - 4;
+    ca = ImGui::GetContentRegionAvail();
+    cw = ca.x - 4; ch = ca.y - 4;
+    if (cw < 100) cw = 100; if (ch < 100) ch = 100;
     canvasScale_ = std::min(cw / screen_.screenW, ch / screen_.screenH);
     canvasW_ = (int)(screen_.screenW * canvasScale_);
     canvasH_ = (int)(screen_.screenH * canvasScale_);
@@ -415,7 +422,7 @@ void MenuBuilder::StartResizing(int, int h, int mx, int my) {
 
 void MenuBuilder::DrawHierarchyTree() {
     ImGui::TextDisabled("Hierarchy"); ImGui::Separator();
-    ImGui::BeginChild("##hierList", ImVec2(0, ImGui::GetContentRegionAvail().y - 100), false);
+    ImGui::BeginChild("##hierList", ImVec2(0, std::max(50.f, ImGui::GetContentRegionAvail().y - 105)), false);
     auto roots = GetChildrenOf(-1);
     for (int idx : roots) DrawHierarchyNode(idx, 0);
     if (screen_.widgets.empty())
