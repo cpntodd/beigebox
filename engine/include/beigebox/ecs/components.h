@@ -105,6 +105,17 @@ struct PowerConsumer { int demand=5; };
 // ── Destructible Terrain ─────────────────────────────────────
 struct DestructibleTerrain { int hp=100; int destroyedTile=0; };
 
+// ── Superweapon ──────────────────────────────────────────────
+enum class SuperweaponType : uint8_t { Nuke=0, OrbitalStrike=1, EMP=2, NaniteSwarm=3 };
+struct Superweapon { SuperweaponType type=SuperweaponType::Nuke; int cooldown=0, maxCooldown=120; bool ready=false; };
+
+// ── Tech Tree ────────────────────────────────────────────────
+struct Technology { std::string name; bool researched=false; std::string prerequisites; }; // comma-separated
+struct TechLab { int researchSpeed=1; };
+
+// ── Fog of War ───────────────────────────────────────────────
+struct Visibility { uint8_t exploredBy=0; }; // bitmask: 1<<playerId
+
 // ── Renderable ───────────────────────────────────────────────
 struct Renderable
 {

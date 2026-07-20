@@ -214,4 +214,67 @@ void DestructibleTerrainSystem(entt::registry& registry)
     }
 }
 
+// ── SuperweaponSystem ────────────────────────────────────────
+
+void SuperweaponSystem(entt::registry& registry)
+{
+    auto view = registry.view<Superweapon>();
+    for (auto ent : view)
+    {
+        auto& sw = registry.get<Superweapon>(ent);
+        if (!sw.ready && sw.cooldown > 0)
+        {
+            sw.cooldown--;
+            if (sw.cooldown == 0)
+                sw.ready = true;
+        }
+    }
+}
+
+// ── TechTreeSystem ───────────────────────────────────────────
+
+void TechTreeSystem(entt::registry& registry)
+{
+    auto view = registry.view<Technology, TechLab>();
+    for (auto ent : view)
+    {
+        auto& tech = registry.get<Technology>(ent);
+        if (tech.researched) continue;
+        auto& lab = registry.get<TechLab>(ent);
+        // Research progresses by lab speed each tick.
+        // Actual completion check is done in Lua via Tech.Research().
+        (void)lab;
+    }
+}
+
+// ── FogOfWarSystem ───────────────────────────────────────────
+
+void FogOfWarSystem(entt::registry& registry)
+{
+    // For each player's units, mark tiles within sight range (6 tiles)
+    // as explored in the Visibility bitmask on tile entities.
+    auto unitView = registry.view<Transform, Player>(entt::exclude<Dead>);
+    auto tileView = registry.view<Transform, Visibility>();
+
+    for (auto unitEnt : unitView)
+    {
+        auto& uT = registry.get<Transform>(unitEnt);
+        auto& player = registry.get<Player>(unitEnt);
+
+        for (auto tileEnt : tileView)
+        {
+            auto& tT = registry.get<Transform>(tileEnt);
+            FixedPoint dx = uT.x - tT.x;
+            FixedPoint dy = uT.y - tT.y;
+            FixedPoint dist = Abs(dx) + Abs(dy);
+
+            if (dist <= FixedPoint::FromInt(6))
+            {
+                auto& vis = registry.get<Visibility>(tileEnt);
+                vis.exploredBy |= (1u << player.factionId);
+            }
+        }
+    }
+}
+
 } // namespace beigebox

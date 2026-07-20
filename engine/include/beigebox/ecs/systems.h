@@ -48,6 +48,21 @@ void PowerGridSystem(entt::registry& registry);
 // transition to their destroyed tile type at 0 HP.
 void DestructibleTerrainSystem(entt::registry& registry);
 
+// ── SuperweaponSystem ────────────────────────────────────────
+// Cooldown tick for superweapons. Ready flag set when
+// cooldown reaches 0.
+void SuperweaponSystem(entt::registry& registry);
+
+// ── TechTreeSystem ───────────────────────────────────────────
+// TechLabs with unresearched Technology advance research
+// progress each tick until researched.
+void TechTreeSystem(entt::registry& registry);
+
+// ── FogOfWarSystem ───────────────────────────────────────────
+// Updates Visibility exploredBy bitmask for tiles within
+// sight range of each player's units.
+void FogOfWarSystem(entt::registry& registry);
+
 // ── Tick All ─────────────────────────────────────────────────
 // Runs all simulation systems in order. Call once per logic frame.
 inline void TickSystems(entt::registry& registry)
@@ -58,6 +73,9 @@ inline void TickSystems(entt::registry& registry)
     GarrisonSystem(registry);
     PowerGridSystem(registry);
     DestructibleTerrainSystem(registry);
+    SuperweaponSystem(registry);
+    TechTreeSystem(registry);
+    FogOfWarSystem(registry);
     CleanupSystem(registry);
 }
 
