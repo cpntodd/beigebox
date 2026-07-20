@@ -43,6 +43,7 @@
 #include "panels/debug_console.h"
 #include "panels/level_editor.h"
 #include "panels/menu_builder.h"
+#include "panels/faction_editor.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 #include "settings.h"
@@ -165,6 +166,7 @@ int main(int argc, char* argv[])
     beigebox::DebugConsole   debugConsole(ecs, lua);
     beigebox::LevelEditor    levelEditor;
     beigebox::MenuBuilder    menuBuilder;
+    beigebox::FactionEditor  factionEditor;
     unitTemplates.Load("unit_templates.json");
 
     // JSON-RPC server — logs through the AI Chat panel
@@ -302,6 +304,7 @@ int main(int argc, char* argv[])
         debugConsole.Draw();
         levelEditor.Draw();
         menuBuilder.Draw();
+        factionEditor.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
