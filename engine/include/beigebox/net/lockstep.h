@@ -97,6 +97,12 @@ public:
     // Add a peer (host only). Returns false if max players reached.
     bool AddPeer(uint32_t ipAddr, uint16_t port);
 
+    // ── LAN Discovery ────────────────────────────────────────
+    // Broadcast a discovery beacon on the LAN (host).
+    // Clients call DiscoverHosts() to find available servers.
+    static void BroadcastDiscovery(uint16_t port, const std::string& serverName);
+    static std::vector<std::string> DiscoverHosts(uint16_t port, int timeoutMs = 2000);
+
 private:
     struct Peer {
         uint32_t       addr;

@@ -110,10 +110,22 @@ int main(int argc, char* argv[])
     ImGuiIO& io = ImGui::GetIO();
     {
         std::string iniPath = beigebox::Settings::ConfigDir() + "/imgui.ini";
-        // Copy to a static buffer — ImGui stores the pointer, not a copy
         static std::string s_iniPath;
         s_iniPath = iniPath;
         io.IniFilename = s_iniPath.c_str();
+    }
+
+    // ── Auto DPI detection ───────────────────────────────────
+    {
+        float ddpi, hdpi, vdpi;
+        if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) == 0)
+        {
+            float dpiScale = hdpi / 96.0f; // 96 DPI = standard
+            if (dpiScale < 1.0f) dpiScale = 1.0f;
+            if (dpiScale > 3.0f) dpiScale = 3.0f;
+            io.FontGlobalScale = dpiScale;
+            SDL_Log("DPI: %.0f (scale: %.2f)", hdpi, dpiScale);
+        }
     }
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;

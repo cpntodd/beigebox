@@ -205,7 +205,7 @@ bool LockstepManager::ReceivePacket()
                         break;
                     }
                 }
-                if (!known && peerCount_ < 8)
+                if (!known && peerCount_ < kMaxPlayers - 1)
                 {
                     peers_[peerCount_].addr = from.sin_addr.s_addr;
                     peers_[peerCount_].port = ntohs(from.sin_port);
@@ -222,6 +222,97 @@ bool LockstepManager::ReceivePacket()
     }
 
     return true;
+}
+
+// ── LAN Discovery ───────────────────────────────────────────
+
+void LockstepManager::BroadcastDiscovery(uint16_t port, const std::string& serverName)
+{
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) return;
+
+    // Enable broadcast
+    int broadcast = 1;
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST,
+               reinterpret_cast<const char*>(&broadcast), sizeof(broadcast));
+
+    // Build discovery packet: "MAD_DISCOVER" + server name
+    std::string packet = "MAD_DISCOVER:" + serverName;
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_BROADCAST;
+
+    sendto(sock, packet.c_str(), packet.size(), 0,
+           reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+
+    closesocket(sock);
+    SDL_Log("Lockstep: broadcast discovery beacon for '%s' on port %u",
+        serverName.c_str(), port);
+}
+
+std::vector<std::string> LockstepManager::DiscoverHosts(uint16_t port, int timeoutMs)
+{
+    std::vector<std::string> results;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) return results;
+
+    // Bind to the discovery port
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+
+    if (bind(sock, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) < 0)
+    {
+        closesocket(sock);
+        return results;
+    }
+
+    // Set timeout
+#ifdef _WIN32
+    DWORD tv = timeoutMs;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&tv), sizeof(tv));
+#else
+    struct timeval tv;
+    tv.tv_sec = timeoutMs / 1000;
+    tv.tv_usec = (timeoutMs % 1000) * 1000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+#endif
+
+    // Listen for broadcasts
+    char buffer[256];
+    sockaddr_in from{};
+    socklen_t fromLen = sizeof(from);
+
+    int n = recvfrom(sock, buffer, sizeof(buffer) - 1, 0,
+                     reinterpret_cast<sockaddr*>(&from), &fromLen);
+
+    while (n > 0)
+    {
+        buffer[n] = '\0';
+        std::string msg(buffer);
+        if (msg.find("MAD_DISCOVER:") == 0)
+        {
+            std::string serverName = msg.substr(13);
+            char ipStr[32];
+            snprintf(ipStr, sizeof(ipStr), "%u.%u.%u.%u",
+                (ntohl(from.sin_addr.s_addr) >> 24) & 0xFF,
+                (ntohl(from.sin_addr.s_addr) >> 16) & 0xFF,
+                (ntohl(from.sin_addr.s_addr) >> 8) & 0xFF,
+                ntohl(from.sin_addr.s_addr) & 0xFF);
+            results.push_back(std::string(ipStr) + "|" + serverName);
+        }
+
+        n = recvfrom(sock, buffer, sizeof(buffer) - 1, 0,
+                     reinterpret_cast<sockaddr*>(&from), &fromLen);
+    }
+
+    closesocket(sock);
+    SDL_Log("Lockstep: discovered %zu host(s)", results.size());
+    return results;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
