@@ -61,6 +61,7 @@ private:
     void DrawNewScriptDialog();
     void DrawFireEventDialog();
     void DrawPreferencesDialog();
+    void DrawNewProjectDialog();
 
     // ── Project serialization ────────────────────────────────
     void SaveProject(const std::string& path);
@@ -89,6 +90,7 @@ private:
     bool showValidateResult_ = false;
     bool showNewScript_      = false;
     bool showFireEvent_      = false;
+    bool showNewProject_     = false;
     bool showPreferences_    = false;
 
     char exportPath_[512]    = "./dist/MAD_Export";
@@ -114,6 +116,14 @@ private:
     // Preferences
     float editorFontScale_   = 1.0f;
     int   editorThemeIdx_    = 0;
+    char  defaultProjectPath_[256] = "./projects";
+    int   autoSaveMinutes_   = 5;
+    bool  autoBackup_        = true;
+    bool  showWelcomeOnStart_ = true;
+
+    // New Project
+    char  newProjectName_[128] = "Untitled";
+    char  newProjectPath_[256] = "./projects/Untitled";
 
     // Map generation params
     int   mapWidth_          = 32;

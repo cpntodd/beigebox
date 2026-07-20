@@ -120,6 +120,7 @@ void MainMenuBar::Draw()
     DrawNewScriptDialog();
     DrawFireEventDialog();
     DrawPreferencesDialog();
+    DrawNewProjectDialog();
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -131,10 +132,7 @@ void MainMenuBar::DrawFileMenu()
     if (ImGui::BeginMenu("File"))
     {
         if (ImGui::MenuItem("New Project", "Ctrl+N"))
-        {
-            if (onNewProject) onNewProject();
-            LogToChat("New project created.");
-        }
+            showNewProject_ = true;
         if (ImGui::MenuItem("Open Project...", "Ctrl+O"))
         {
             LoadProject(projectPath_);
@@ -805,25 +803,137 @@ void MainMenuBar::DrawFireEventDialog() {
 }
 
 // ═════════════════════════════════════════════════════════════
-// Preferences
+// Preferences Dialog (holistic — General, Editor, AI, Keybindings)
 // ═════════════════════════════════════════════════════════════
 
 void MainMenuBar::DrawPreferencesDialog() {
     if (!showPreferences_) return;
+    ImGui::SetNextWindowSize(ImVec2(500, 420), ImGuiCond_FirstUseEver);
     ImGui::OpenPopup("Preferences");
-    if (ImGui::BeginPopupModal("Preferences", &showPreferences_, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::Text("Editor Preferences"); ImGui::Separator();
-        ImGui::SliderFloat("UI Scale", &editorFontScale_, 0.5f, 2.0f, "%.1f");
-        const char* themes[] = {"Dark","Light","Classic"};
-        ImGui::Combo("Theme", &editorThemeIdx_, themes, 3); ImGui::Spacing();
-        ImGui::Text("Map Defaults:");
-        ImGui::InputInt("Width", &mapWidth_); ImGui::InputInt("Height", &mapHeight_);
-        ImGui::SliderFloat("Salvage", &mapSalvageDensity_, 0.0f, 0.5f);
-        ImGui::SliderFloat("Geothermal", &mapGeothermalFreq_, 0.0f, 0.3f); ImGui::Spacing();
+    if (ImGui::BeginPopupModal("Preferences", &showPreferences_)) {
+        if (ImGui::BeginTabBar("##prefsTabs")) {
+
+            // ── General Tab ──────────────────────────────────
+            if (ImGui::BeginTabItem("General")) {
+                ImGui::Text("Default Project Path:");
+                ImGui::InputText("##defProjPath", defaultProjectPath_, sizeof(defaultProjectPath_));
+                ImGui::InputInt("Auto-save (minutes, 0=off)", &autoSaveMinutes_);
+                ImGui::Checkbox("Auto-backup on save", &autoBackup_);
+                ImGui::Checkbox("Show welcome message on start", &showWelcomeOnStart_);
+                ImGui::EndTabItem();
+            }
+
+            // ── Editor Tab ───────────────────────────────────
+            if (ImGui::BeginTabItem("Editor")) {
+                ImGui::SliderFloat("UI Scale", &editorFontScale_, 0.5f, 2.0f, "%.1f");
+                const char* themes[] = {"Dark", "Light", "Classic"};
+                ImGui::Combo("Theme", &editorThemeIdx_, themes, 3);
+                ImGui::Spacing();
+                ImGui::Text("Map Defaults:");
+                ImGui::InputInt("Width", &mapWidth_);
+                ImGui::InputInt("Height", &mapHeight_);
+                ImGui::InputInt("Seed", &mapSeed_);
+                ImGui::SliderFloat("Salvage Density", &mapSalvageDensity_, 0.0f, 0.5f);
+                ImGui::SliderFloat("Geothermal Freq", &mapGeothermalFreq_, 0.0f, 0.3f);
+                ImGui::EndTabItem();
+            }
+
+            // ── AI Tab ───────────────────────────────────────
+            if (ImGui::BeginTabItem("AI")) {
+                const char* providers[] = {"Ollama", "OpenAI", "Anthropic", "DeepSeek"};
+                ImGui::Combo("Default Provider", &providerIdx_, providers, 4);
+                ImGui::InputText("Default Model", modelBuf_, sizeof(modelBuf_));
+                if (providerIdx_ > 0)
+                    ImGui::InputText("API Key", apiKeyBuf_, sizeof(apiKeyBuf_), ImGuiInputTextFlags_Password);
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                    "Use AI → Configure Provider for endpoint settings.");
+                ImGui::EndTabItem();
+            }
+
+            // ── Keybindings Tab ──────────────────────────────
+            if (ImGui::BeginTabItem("Keybindings")) {
+                ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f),
+                    "Keybindings (read-only — customize in future release):\n\n"
+                    "Ctrl+N  New Project\n"
+                    "Ctrl+O  Open Project\n"
+                    "Ctrl+S  Save Project\n"
+                    "Ctrl+Z  Undo\n"
+                    "Ctrl+Y  Redo\n"
+                    "F1      Documentation\n"
+                    "F5      Continue (Debugger)\n"
+                    "F10     Step Once (Debugger)\n"
+                    "Esc     Close / Quit");
+                ImGui::EndTabItem();
+            }
+
+            ImGui::EndTabBar();
+        }
+        ImGui::Spacing();
         if (ImGui::Button("Apply", ImVec2(100, 0))) {
-            ImGui::GetIO().FontGlobalScale = editorFontScale_; showPreferences_ = false; }
+            ImGui::GetIO().FontGlobalScale = editorFontScale_;
+            showPreferences_ = false;
+            LogToChat("Preferences applied.");
+        }
         ImGui::SameLine();
         if (ImGui::Button("Cancel", ImVec2(80, 0))) showPreferences_ = false;
+        ImGui::EndPopup();
+    }
+}
+
+// ═════════════════════════════════════════════════════════════
+// New Project Wizard
+// ═════════════════════════════════════════════════════════════
+
+void MainMenuBar::DrawNewProjectDialog() {
+    if (!showNewProject_) return;
+    ImGui::OpenPopup("New Project");
+    if (ImGui::BeginPopupModal("New Project", &showNewProject_,
+        ImGuiWindowFlags_AlwaysAutoResize)) {
+
+        ImGui::Text("Create a new M.A.D. project.");
+        ImGui::Spacing();
+        ImGui::InputText("Project Name", newProjectName_, sizeof(newProjectName_));
+
+        // Auto-update path when name changes
+        ImGui::InputText("Project Path", newProjectPath_, sizeof(newProjectPath_));
+        ImGui::SameLine();
+        if (ImGui::Button("...", ImVec2(30, 0))) {
+            // In a real file dialog, this would open a directory picker.
+            // For now, sync path with name.
+            snprintf(newProjectPath_, sizeof(newProjectPath_), "%s/%s",
+                defaultProjectPath_, newProjectName_);
+        }
+
+        ImGui::Spacing();
+        ImGui::Text("This will create:");
+        ImGui::BulletText("%s/", newProjectPath_);
+        ImGui::BulletText("  assets/sprites/");
+        ImGui::BulletText("  scripts/");
+        ImGui::BulletText("  maps/");
+        ImGui::BulletText("  project.madproj");
+        ImGui::Spacing();
+
+        ImGui::Checkbox("Generate starter map (32×32)", &autoBackup_); // reuse bool
+
+        if (ImGui::Button("Create", ImVec2(120, 0))) {
+            std::string base(newProjectPath_);
+            MakeDir(base);
+            MakeDir(base + "/assets");
+            MakeDir(base + "/assets/sprites");
+            MakeDir(base + "/scripts");
+            MakeDir(base + "/maps");
+
+            // Save initial empty project file
+            std::string projPath = base + "/project.madproj";
+            SaveProject(projPath);
+
+            LogToChat("Project created at: " + base);
+            if (onNewProject) onNewProject();
+            showNewProject_ = false;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(80, 0))) showNewProject_ = false;
+
         ImGui::EndPopup();
     }
 }
