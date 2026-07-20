@@ -150,7 +150,7 @@ void MenuBuilder::DrawPalette() {
         std::string label = std::string(WidgetIcon(t)) + "##" + WidgetTypeName(t);
         ImGui::Button(label.c_str(), ImVec2(40, 30));
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", WidgetTypeName(t));
-        if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+        if (ImGui::BeginDragDropSource()) {
             int ti = (int)t;
             ImGui::SetDragDropPayload("MENU_WIDGET_TYPE", &ti, sizeof(ti));
             ImGui::Text("%s", WidgetTypeName(t));
@@ -203,12 +203,20 @@ void MenuBuilder::DrawCanvas() {
     if (marqueeSelect_) DrawMarqueeRect();
 
     if (ImGui::BeginDragDropTarget()) {
+        // Highlight canvas while hovering a valid payload
+        const ImGuiPayload* preview = ImGui::AcceptDragDropPayload("MENU_WIDGET_TYPE", ImGuiDragDropFlags_AcceptBeforeDelivery);
+        if (preview) {
+            dl->AddRect(ImVec2(canvasOffsetX_, canvasOffsetY_),
+                ImVec2(canvasOffsetX_ + canvasW_, canvasOffsetY_ + canvasH_),
+                IM_COL32(100, 200, 255, 100), 0, 0, 3.0f);
+        }
         const ImGuiPayload* p = ImGui::AcceptDragDropPayload("MENU_WIDGET_TYPE");
         if (p) {
             int ti = *(const int*)p->Data;
             ImVec2 m = ImGui::GetMousePos();
             int cx = (int)((m.x - canvasOffsetX_) / canvasScale_);
             int cy = (int)((m.y - canvasOffsetY_) / canvasScale_);
+            Log(std::string("Drop: ") + WidgetTypeName((WidgetType)ti) + " at (" + std::to_string(cx) + "," + std::to_string(cy) + ")");
             AddWidget((WidgetType)ti, cx, cy);
         }
         ImGui::EndDragDropTarget();
@@ -249,8 +257,8 @@ void MenuBuilder::DrawWidgetOnCanvas(const WidgetDef& w) {
 
     ImU32 fill, border;
     if (designMode_) {
-        fill = sel ? IM_COL32(60, 120, 200, 80) : IM_COL32(40, 40, 55, 60);
-        border = sel ? IM_COL32(255, 200, 50, 255) : IM_COL32(80, 80, 100, 150);
+        fill = sel ? IM_COL32(60, 120, 200, 120) : IM_COL32(50, 55, 70, 100);
+        border = sel ? IM_COL32(255, 200, 50, 255) : IM_COL32(100, 110, 130, 180);
     } else {
         fill = (w.type == Button) ? IM_COL32(50, 100, 180, 220) :
                (w.type == Panel)  ? IM_COL32(25, 25, 40, 200)  :
@@ -510,6 +518,7 @@ void MenuBuilder::AddWidget(WidgetType type, int x, int y) {
     w.text = WidgetTypeName(type);
     screen_.widgets.push_back(w);
     selectedWidgets_.clear(); selectedWidgets_.insert(w.id);
+    Log("Added widget: " + w.name + " (" + std::to_string(screen_.widgets.size()) + " total)");
 }
 
 void MenuBuilder::RemoveWidget(int i) {
