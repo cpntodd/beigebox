@@ -51,10 +51,22 @@ target_include_directories(mad_editor
 )
 
 # ── Dependencies ─────────────────────────────────────────────
+# SDL2_mixer via pkg-config (Debian: libsdl2-mixer-dev)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2_MIXER REQUIRED SDL2_mixer)
+
 target_link_libraries(mad_editor
     PRIVATE
         beigebox_engine
         SDL2::SDL2
         OpenGL::GL
         nlohmann_json::nlohmann_json
+        ${SDL2_MIXER_LIBRARIES}
 )
+
+target_include_directories(mad_editor
+    PRIVATE
+        ${SDL2_MIXER_INCLUDE_DIRS}
+)
+
+target_compile_options(mad_editor PRIVATE ${SDL2_MIXER_CFLAGS_OTHER})
