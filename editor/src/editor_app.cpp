@@ -151,6 +151,7 @@ int main(int argc, char* argv[])
     // ── Main Editor Loop ────────────────────────────────────
     while (running)
     {
+        // ── Poll Events ────────────────────────────────────
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -163,31 +164,32 @@ int main(int argc, char* argv[])
                 running = false;
         }
 
-        // ── Editor Panels ────────────────────────────────────
-        menuBar.Draw();
-
-        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
-
+        // ── ECS Tick (game logic) ───────────────────────────
+        beigebox::TickSystems(ecs);
+        thawGrid.Tick();
         ecs.view<entt::entity>().each([&](entt::entity entity) {
             if (lua.HasScript(entity, "OnTick"))
                 lua.FireEvent(entity, "OnTick");
         });
 
-        // ── ImGui Frame ──────────────────────────────────────
+        // ── ImGui Frame Begin ───────────────────────────────
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        // ── Dockspace ────────────────────────────────────────
+        // ── Dockspace ───────────────────────────────────────
         ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
-        // ── Editor Panels ────────────────────────────────────
+        // ── Menu Bar ────────────────────────────────────────
+        menuBar.Draw();
+
+        // ── Editor Panels ───────────────────────────────────
         entityList.Draw();
         propGrid.Draw();
         eventEditor.Draw();
         aiChat.Draw();
 
-        // ── Render ───────────────────────────────────────────
+        // ── ImGui Frame End + Render ────────────────────────
         ImGui::Render();
         SDL_GL_MakeCurrent(window, gl_context);
         glViewport(0, 0,
