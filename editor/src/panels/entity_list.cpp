@@ -32,9 +32,17 @@ void EntityListPanel::Draw()
             uint32_t id = static_cast<uint32_t>(entt::to_integral(entity));
             ImGui::TableNextRow();
 
-            // ID
+            // ID (clickable to select)
             ImGui::TableSetColumnIndex(0);
-            ImGui::Text("%u", id);
+            bool isSelected = (selected_ == entity);
+            if (ImGui::Selectable(std::to_string(id).c_str(), &isSelected,
+                ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+            {
+                selected_ = entity;
+                if (onSelect) onSelect(entity);
+            }
+            if (isSelected)
+                ImGui::TableSetBgColor(ImGuiTableBgTarget_RowBg0, ImGui::GetColorU32(ImVec4(0.2f, 0.4f, 0.7f, 0.3f)));
 
             // Position
             ImGui::TableSetColumnIndex(1);

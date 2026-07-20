@@ -147,6 +147,13 @@ int main(int argc, char* argv[])
         aiChat.AppendMessage("system", "Layout reset requested. Delete imgui.ini and restart to reset window positions.");
     };
 
+    // ── Selection sync: Entity List → Properties + Event Editor ──
+    entityList.onSelect = [&](entt::entity e) {
+        propGrid.SelectEntity(e);
+        eventEditor.SelectEntity(e);
+        menuBar.SetSelectedEntity(e);
+    };
+
     // ── Seed: spawn a demo entity for the user to play with ─
     auto demoEntity = ecs.create();
     ecs.emplace<beigebox::Transform>(demoEntity,
