@@ -268,6 +268,7 @@ int main(int argc, char* argv[])
         menuBar.Draw();
 
         // ── Editor Panels ───────────────────────────────────
+        projectExplorer.SetProjectPath(menuBar.GetProjectPath());
         entityList.Draw();
         propGrid.Draw();
         viewport.Draw();

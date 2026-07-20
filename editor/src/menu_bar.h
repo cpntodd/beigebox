@@ -38,6 +38,7 @@ public:
     void SetUndoManager(UndoManager* um) { undoManager_ = um; }
     void SetSelectedEntity(entt::entity e) { selectedEntity_ = e; }
     void SetProjectPath(const std::string& p) { projectPath_ = p; }
+    std::string GetProjectPath() const { return projectPath_; }
 
     // ── Callbacks ────────────────────────────────────────────
     using VoidCallback = std::function<void()>;
