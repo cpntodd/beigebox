@@ -22,6 +22,7 @@
 #include "beigebox/core/fixed_point.h"
 #include "beigebox/world/thaw_grid.h"
 #include "beigebox/render/sprite_registry.h"
+#include "beigebox/render/renderer.h"
 
 #include "mcp/tool_registry.h"
 #include "mcp/tools.h"
@@ -33,6 +34,7 @@
 #include "panels/event_editor.h"
 #include "panels/asset_browser.h"
 #include "panels/event_debugger.h"
+#include "panels/viewport.h"
 #include "undo/undo_manager.h"
 #include "menu_bar.h"
 
@@ -126,6 +128,14 @@ int main(int argc, char* argv[])
     beigebox::EventEditor     eventEditor(ecs, lua);
     beigebox::EventDebugger   eventDebugger(ecs, lua);
     beigebox::UndoManager     undoManager;
+
+    // ── Viewport Renderer ────────────────────────────────────
+    beigebox::Renderer viewportRenderer;
+    viewportRenderer.Init(window);
+
+    // ── Viewport Panel ───────────────────────────────────────
+    beigebox::ViewportPanel viewport(ecs, viewportRenderer, thawGrid, lua);
+    viewport.SetUndoManager(&undoManager);
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -252,6 +262,7 @@ int main(int argc, char* argv[])
         // ── Editor Panels ───────────────────────────────────
         entityList.Draw();
         propGrid.Draw();
+        viewport.Draw();
         assetBrowser.Draw();
         eventEditor.Draw();
         eventDebugger.Draw();
