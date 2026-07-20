@@ -7,6 +7,7 @@
 #include "../mcp/llm_client.h"
 
 #include <imgui.h>
+#include <SDL2/SDL.h>
 #include <sstream>
 #include <cstring>
 
@@ -20,20 +21,56 @@ void AIChatPanel::Draw()
     float footerHeight = ImGui::GetFrameHeightWithSpacing() + 8.0f;
     ImGui::BeginChild("##chatlog", ImVec2(0, -footerHeight), true);
 
-    for (const auto& msg : messages_)
+    for (size_t idx = 0; idx < messages_.size(); ++idx)
     {
+        const auto& msg = messages_[idx];
+        ImGui::PushID(static_cast<int>(idx));
+
+        ImVec4 textColor;
+        const char* prefix = "";
         if (msg.sender == "system")
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.9f, 0.5f, 1.0f));
-            ImGui::TextWrapped("%s", msg.text.c_str());
-            ImGui::PopStyleColor();
+            textColor = ImVec4(0.5f, 0.9f, 0.5f, 1.0f);
         }
         else
         {
-            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.7f, 0.3f, 1.0f));
-            ImGui::TextWrapped("> %s", msg.text.c_str());
-            ImGui::PopStyleColor();
+            textColor = ImVec4(0.9f, 0.7f, 0.3f, 1.0f);
+            prefix = "> ";
         }
+
+        // ── Selectable text for copy support ─────────────────
+        std::string displayText = prefix + msg.text;
+        ImGui::PushStyleColor(ImGuiCol_Text, textColor);
+        ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(0.2f, 0.2f, 0.3f, 0.5f));
+
+        // Use Selectable so text can be selected + copied with Ctrl+C
+        ImGui::Selectable(displayText.c_str(), false,
+            ImGuiSelectableFlags_AllowDoubleClick);
+        ImGui::PopStyleColor(2);
+
+        // ── Right-click context menu ─────────────────────────
+        if (ImGui::BeginPopupContextItem())
+        {
+            if (ImGui::MenuItem("Copy Message"))
+                SDL_SetClipboardText(msg.text.c_str());
+            if (ImGui::MenuItem("Copy All"))
+            {
+                std::string all;
+                for (auto& m : messages_)
+                {
+                    if (m.sender == "user") all += "> ";
+                    all += m.text + "\n";
+                }
+                SDL_SetClipboardText(all.c_str());
+            }
+            ImGui::EndPopup();
+        }
+
+        // ── Tooltip shows full message on hover ──────────────
+        if (ImGui::IsItemHovered() && msg.text.size() > 100)
+            ImGui::SetTooltip("%s", msg.text.c_str());
+
+        ImGui::PopID();
     }
 
     if (scrollToBottom_)
@@ -43,28 +80,36 @@ void AIChatPanel::Draw()
     ImGui::EndChild();
 
     // ── Input Field ──────────────────────────────────────────
-    ImGui::PushItemWidth(-1);
-    bool submit = ImGui::InputText("##chatinput", inputBuf_, sizeof(inputBuf_),
-                                   ImGuiInputTextFlags_EnterReturnsTrue);
+    // Ensure buffer has capacity for large pastes (4KB+)
+    if (inputBuf_.size() < 4096)
+        inputBuf_.resize(4096);
+
+    ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x - 70);
+
+    bool submit = ImGui::InputText("##chatinput", &inputBuf_[0], inputBuf_.size(),
+        ImGuiInputTextFlags_EnterReturnsTrue |
+        ImGuiInputTextFlags_CtrlEnterForNewLine);
     ImGui::PopItemWidth();
+    ImGui::SameLine();
 
-    // Auto-focus the input field
+    if (ImGui::Button("Send", ImVec2(60, 0)))
+        submit = true;
+
+    // Auto-focus
     if (ImGui::IsWindowAppearing())
-        ImGui::SetKeyboardFocusHere();
-
-    if (submit && inputBuf_[0] != '\0')
     {
-        std::string input(inputBuf_);
-        inputBuf_[0] = '\0';
+        ImGui::SetKeyboardFocusHere();
+    }
+
+    if (submit && !inputBuf_.empty() && inputBuf_[0] != '\0')
+    {
+        std::string input(inputBuf_.c_str()); // trim to strlen
+        inputBuf_.clear();
+        inputBuf_.resize(4096, '\0');
         scrollToBottom_ = true;
 
-        // Echo user input
         messages_.push_back({"user", input});
-
-        // Execute command
         ExecuteCommand(input);
-
-        // Re-focus input
         ImGui::SetKeyboardFocusHere();
     }
 

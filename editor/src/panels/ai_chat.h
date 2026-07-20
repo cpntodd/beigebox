@@ -40,7 +40,7 @@ private:
     ToolRegistry*     tools_;
     LlmClient*        llm_ = nullptr;
     std::vector<Message> messages_;
-    char                 inputBuf_[1024] = {};
+    std::string          inputBuf_;
     bool                 scrollToBottom_ = true;
 };
 
