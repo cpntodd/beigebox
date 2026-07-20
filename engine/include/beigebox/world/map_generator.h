@@ -61,6 +61,10 @@ public:
 
     static bool SaveToFile(const std::string& path, const MapTile* tiles, int w, int h);
     static bool LoadFromFile(const std::string& path, std::vector<MapTile>& outTiles, int& outW, int& outH);
+
+    // ── JSON format (.ogm.json) ──────────────────────────────
+    static bool SaveToJson(const std::string& path, const MapTile* tiles, int w, int h, int seed);
+    static bool LoadFromJson(const std::string& path, std::vector<MapTile>& outTiles, int& outW, int& outH, int& outSeed);
 };
 
 } // namespace beigebox

@@ -162,4 +162,119 @@ bool MapGenerator::LoadFromFile(const std::string& path, std::vector<MapTile>& o
     return true;
 }
 
+// ── JSON Map Format (.ogm.json) ─────────────────────────────
+
+bool MapGenerator::SaveToJson(const std::string& path, const MapTile* tiles, int w, int h, int seed)
+{
+    // Simple JSON writing without nlohmann dependency in engine
+    FILE* f = fopen(path.c_str(), "w");
+    if (!f) return false;
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"format\": \"ogm.json\",\n");
+    fprintf(f, "  \"version\": 1,\n");
+    fprintf(f, "  \"width\": %d,\n", w);
+    fprintf(f, "  \"height\": %d,\n", h);
+    fprintf(f, "  \"seed\": %d,\n", seed);
+
+    // Terrain array
+    fprintf(f, "  \"terrain\": [");
+    int count = w * h;
+    for (int i = 0; i < count; ++i)
+    {
+        fprintf(f, "%d", static_cast<int>(tiles[i].terrain));
+        if (i < count - 1) fprintf(f, ",");
+    }
+    fprintf(f, "],\n");
+
+    // Resources array
+    fprintf(f, "  \"resources\": [");
+    for (int i = 0; i < count; ++i)
+    {
+        fprintf(f, "%d", tiles[i].resourceAmount);
+        if (i < count - 1) fprintf(f, ",");
+    }
+    fprintf(f, "],\n");
+
+    // Overlay (flags)
+    fprintf(f, "  \"overlay\": [");
+    for (int i = 0; i < count; ++i)
+    {
+        fprintf(f, "%d", tiles[i].flags);
+        if (i < count - 1) fprintf(f, ",");
+    }
+    fprintf(f, "]\n");
+
+    fprintf(f, "}\n");
+    fclose(f);
+    return true;
+}
+
+bool MapGenerator::LoadFromJson(const std::string& path, std::vector<MapTile>& outTiles, int& outW, int& outH, int& outSeed)
+{
+    // Use a simple line-by-line parser for the JSON format
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) return false;
+
+    // Read entire file
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0) { fclose(f); return false; }
+
+    std::string content(sz, '\0');
+    fread(&content[0], 1, sz, f);
+    fclose(f);
+
+    // Simple parser — extract width, height, seed, terrain[], resources[], overlay[]
+    auto findInt = [&](const std::string& key, int defaultVal) -> int {
+        auto pos = content.find("\"" + key + "\"");
+        if (pos == std::string::npos) return defaultVal;
+        pos = content.find(':', pos);
+        if (pos == std::string::npos) return defaultVal;
+        pos++;
+        while (pos < content.size() && (content[pos] == ' ' || content[pos] == '\n')) pos++;
+        return atoi(&content[pos]);
+    };
+
+    auto parseArray = [&](const std::string& key, std::vector<int>& out) {
+        auto pos = content.find("\"" + key + "\"");
+        if (pos == std::string::npos) return;
+        pos = content.find('[', pos);
+        if (pos == std::string::npos) return;
+        pos++;
+        while (pos < content.size() && content[pos] != ']')
+        {
+            if (content[pos] >= '0' && content[pos] <= '9')
+            {
+                out.push_back(atoi(&content[pos]));
+                while (pos < content.size() && content[pos] >= '0' && content[pos] <= '9') pos++;
+            }
+            else pos++;
+        }
+    };
+
+    outW = findInt("width", 32);
+    outH = findInt("height", 32);
+    outSeed = findInt("seed", 42);
+
+    std::vector<int> terrain, resources, overlay;
+    parseArray("terrain", terrain);
+    parseArray("resources", resources);
+    parseArray("overlay", overlay);
+
+    int count = outW * outH;
+    outTiles.resize(count);
+    for (int i = 0; i < count && i < static_cast<int>(terrain.size()); ++i)
+    {
+        outTiles[i].terrain = static_cast<TileTerrain>(terrain[i]);
+        if (i < static_cast<int>(resources.size()))
+            outTiles[i].resourceAmount = static_cast<uint8_t>(resources[i]);
+        if (i < static_cast<int>(overlay.size()))
+            outTiles[i].flags = static_cast<uint8_t>(overlay[i]);
+    }
+
+    return true;
+}
+
 } // namespace beigebox
