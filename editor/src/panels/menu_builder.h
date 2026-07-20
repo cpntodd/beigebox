@@ -92,7 +92,7 @@ public:
     void Draw();
 
     // Called when a widget is selected/deselected (nullptr = deselect)
-    std::function<void(const WidgetDef*)> onWidgetSelect;
+    std::function<void(WidgetDef*)> onWidgetSelect;
 
     // Widget type icon (Unicode) for palette
     static const char* WidgetIcon(WidgetType t);

@@ -149,7 +149,7 @@ void PropertiesGrid::DrawWeapon()
 
 void PropertiesGrid::DrawWidgetProperties()
 {
-    const WidgetDef& w = *selectedWidget_;
+    WidgetDef& w = *selectedWidget_;
     ImGui::Text("%s %s", MenuBuilder::WidgetIcon(w.type), w.name.c_str());
     ImGui::Separator();
 
@@ -158,22 +158,19 @@ void PropertiesGrid::DrawWidgetProperties()
     strncpy(nameBuf, w.name.c_str(), sizeof(nameBuf) - 1);
     nameBuf[sizeof(nameBuf) - 1] = 0;
     if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf)))
-        const_cast<WidgetDef*>(selectedWidget_)->name = nameBuf;
+        w.name = nameBuf;
 
     // Type (read-only)
     ImGui::LabelText("Type", "%s %s", MenuBuilder::WidgetIcon(w.type),
         MenuBuilder::WidgetTypeName(w.type));
 
     // Position
-    if (ImGui::InputInt("Pos X", &const_cast<WidgetDef*>(selectedWidget_)->offsetX))
-        ;
-    if (ImGui::InputInt("Pos Y", &const_cast<WidgetDef*>(selectedWidget_)->offsetY))
-        ;
+    ImGui::InputInt("Pos X", &w.offsetX);
+    ImGui::InputInt("Pos Y", &w.offsetY);
 
     // Size
-    int ww = w.width, wh = w.height;
-    if (ImGui::InputInt("Width", &ww))  { const_cast<WidgetDef*>(selectedWidget_)->width  = std::max(20, ww); }
-    if (ImGui::InputInt("Height", &wh)) { const_cast<WidgetDef*>(selectedWidget_)->height = std::max(14, wh); }
+    if (ImGui::InputInt("Width", &w.width))  { if (w.width < 20) w.width = 20; }
+    if (ImGui::InputInt("Height", &w.height)) { if (w.height < 14) w.height = 14; }
 
     // Anchor
     const char* anchorNames[] = {"Top-Left","Top-Center","Top-Right",
@@ -181,47 +178,42 @@ void PropertiesGrid::DrawWidgetProperties()
         "Bottom-Left","Bottom-Center","Bottom-Right"};
     int aidx = (int)w.anchor;
     if (ImGui::Combo("Anchor", &aidx, anchorNames, 9))
-        const_cast<WidgetDef*>(selectedWidget_)->anchor = (Anchor)aidx;
+        w.anchor = (Anchor)aidx;
 
     // Text
     char txtBuf[256];
     strncpy(txtBuf, w.text.c_str(), sizeof(txtBuf) - 1);
     txtBuf[sizeof(txtBuf) - 1] = 0;
     if (ImGui::InputText("Text", txtBuf, sizeof(txtBuf)))
-        const_cast<WidgetDef*>(selectedWidget_)->text = txtBuf;
+        w.text = txtBuf;
 
     // Font size
-    ImGui::InputInt("Font Size", &const_cast<WidgetDef*>(selectedWidget_)->fontSize);
-    if (w.fontSize < 8) const_cast<WidgetDef*>(selectedWidget_)->fontSize = 8;
+    if (ImGui::InputInt("Font Size", &w.fontSize))
+        { if (w.fontSize < 8) w.fontSize = 8; }
 
     // Color
     float col[4] = {w.colorR, w.colorG, w.colorB, w.colorA};
     if (ImGui::ColorEdit4("Color", col))
-    {
-        const_cast<WidgetDef*>(selectedWidget_)->colorR = col[0];
-        const_cast<WidgetDef*>(selectedWidget_)->colorG = col[1];
-        const_cast<WidgetDef*>(selectedWidget_)->colorB = col[2];
-        const_cast<WidgetDef*>(selectedWidget_)->colorA = col[3];
-    }
+        { w.colorR = col[0]; w.colorG = col[1]; w.colorB = col[2]; w.colorA = col[3]; }
 
     // Flags
-    ImGui::Checkbox("Visible", &const_cast<WidgetDef*>(selectedWidget_)->visible);
+    ImGui::Checkbox("Visible", &w.visible);
     ImGui::SameLine();
-    ImGui::Checkbox("Locked", &const_cast<WidgetDef*>(selectedWidget_)->locked);
+    ImGui::Checkbox("Locked", &w.locked);
 
     // onClick
     char clickBuf[128];
     strncpy(clickBuf, w.onClick.c_str(), sizeof(clickBuf) - 1);
     clickBuf[sizeof(clickBuf) - 1] = 0;
     if (ImGui::InputText("OnClick", clickBuf, sizeof(clickBuf)))
-        const_cast<WidgetDef*>(selectedWidget_)->onClick = clickBuf;
+        w.onClick = clickBuf;
 
     // Binding
     char bindBuf[128];
     strncpy(bindBuf, w.binding.c_str(), sizeof(bindBuf) - 1);
     bindBuf[sizeof(bindBuf) - 1] = 0;
     if (ImGui::InputText("Binding", bindBuf, sizeof(bindBuf)))
-        const_cast<WidgetDef*>(selectedWidget_)->binding = bindBuf;
+        w.binding = bindBuf;
 }
 
 } // namespace beigebox

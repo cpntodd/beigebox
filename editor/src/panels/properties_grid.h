@@ -23,7 +23,7 @@ public:
     void SelectEntity(entt::entity entity) { selected_ = entity; selectedWidget_ = nullptr; }
 
     // Select a Menu Builder widget to edit. Pass nullptr to deselect.
-    void SelectWidget(const WidgetDef* w) { selectedWidget_ = w; selected_ = entt::null; }
+    void SelectWidget(WidgetDef* w) { selectedWidget_ = w; selected_ = entt::null; }
 
     // Get the currently selected entity.
     entt::entity Selected() const { return selected_; }
@@ -41,7 +41,7 @@ private:
 
     entt::registry* registry_;
     entt::entity    selected_ = entt::null;
-    const WidgetDef* selectedWidget_ = nullptr;
+    WidgetDef*       selectedWidget_ = nullptr;
 };
 
 } // namespace beigebox
