@@ -57,6 +57,8 @@ private:
     void DrawTreeNode(TreeNode& node, int depth);
     void DrawContextMenu(const TreeNode& node);
     void RefreshTree();
+    void CollectExpandedPaths(const TreeNode& node, std::vector<std::string>& paths);
+    void RestoreExpandedPaths(TreeNode& node, const std::vector<std::string>& paths);
 
     // ── File system helpers ──────────────────────────────────
     static bool IsIgnored(const std::string& name);

@@ -168,6 +168,10 @@ void ProjectExplorer::ScanChildren(TreeNode& node)
 
 void ProjectExplorer::RefreshTree()
 {
+    // Save currently expanded paths before rebuild
+    std::vector<std::string> expandedPaths;
+    CollectExpandedPaths(rootNode_, expandedPaths);
+
     rootNode_.name     = rootPath_;
     rootNode_.fullPath = rootPath_;
     rootNode_.isDir    = true;
@@ -175,6 +179,35 @@ void ProjectExplorer::RefreshTree()
     rootNode_.children.clear();
     rootNode_.childrenLoaded = false;
     ScanChildren(rootNode_);
+
+    // Restore expanded state
+    RestoreExpandedPaths(rootNode_, expandedPaths);
+}
+
+void ProjectExplorer::CollectExpandedPaths(const TreeNode& node,
+    std::vector<std::string>& paths)
+{
+    if (node.expanded && node.isDir && !node.fullPath.empty())
+        paths.push_back(node.fullPath);
+    for (const auto& child : node.children)
+        CollectExpandedPaths(child, paths);
+}
+
+void ProjectExplorer::RestoreExpandedPaths(TreeNode& node,
+    const std::vector<std::string>& paths)
+{
+    for (const auto& p : paths)
+    {
+        if (node.fullPath == p)
+        {
+            node.expanded = true;
+            if (!node.childrenLoaded)
+                ScanChildren(node);
+            break;
+        }
+    }
+    for (auto& child : node.children)
+        RestoreExpandedPaths(child, paths);
 }
 
 // ── Context Menu ────────────────────────────────────────────
@@ -357,19 +390,21 @@ void ProjectExplorer::DrawTreeNode(TreeNode& node, int depth)
     {
         if (node.isDir)
         {
-            node.expanded = ImGui::TreeNodeEx(label.c_str(), flags);
+            ImGui::SetNextItemOpen(node.expanded);
+            bool open = ImGui::TreeNodeEx(label.c_str(), flags);
+            if (open != node.expanded)
+            {
+                node.expanded = open;
+                // Lazy-load children on first expand
+                if (node.expanded && !node.childrenLoaded)
+                    ScanChildren(node);
+            }
         }
         else
         {
             ImGui::TreeNodeEx(label.c_str(), flags);
             if (ImGui::IsItemClicked() && onFileOpen)
                 onFileOpen(node.fullPath);
-        }
-
-        // ── Lazy-load children on first expand ──────────────
-        if (node.isDir && node.expanded && !node.childrenLoaded)
-        {
-            ScanChildren(node);
         }
 
         // ── Context menu ────────────────────────────────────
