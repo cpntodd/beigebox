@@ -21,6 +21,7 @@ add_executable(beigebox_tests
     test_thaw.cpp
     test_jsonrpc.cpp
     test_map.cpp
+    test_lockstep.cpp
     ${CMAKE_SOURCE_DIR}/editor/src/mcp/tool_registry.cpp
     ${CMAKE_SOURCE_DIR}/editor/src/mcp/json_rpc.cpp
 )
