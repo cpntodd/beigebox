@@ -1,0 +1,55 @@
+# ── Build Artifacts ──────────────────────────────────────────
+build/
+cmake-build-*/
+out/
+dist/
+
+# ── Compiled Objects ─────────────────────────────────────────
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# ── CMake Generated ──────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+compile_commands.json
+
+# ── FetchContent ─────────────────────────────────────────────
+_deps/
+
+# ── IDE / Editor ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.fleet/
+
+# ── Project-Specific ─────────────────────────────────────────
+# Generated map files
+*.ogm
+
+# Save files
+*.sav
+
+# User config / local overrides
+user/
+local.env
+
+# Core dumps (root only — does not match src/core/ directories)
+/core
+*.core
+
+# ── OS Noise ─────────────────────────────────────────────────
+Thumbs.db
+__pycache__/
+*.pyc

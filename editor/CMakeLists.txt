@@ -1,0 +1,49 @@
+# editor/CMakeLists.txt
+# ─────────────────────────────────────────────────────────────
+# M.A.D. Editor — ImGui-based game editor with MCP AI integration.
+# Links against the beigebox_engine library.
+# ─────────────────────────────────────────────────────────────
+
+# ── ImGui Core + Platform Backends ───────────────────────────
+# ImGui docking branch doesn't ship a CMake target, so we compile
+# the core .cpp files directly alongside the platform backends.
+set(IMGUI_SOURCES
+    # Core
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    # Platform backends
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+)
+
+add_executable(mad_editor
+    src/editor_app.cpp
+    ${IMGUI_SOURCES}
+    # ── Future sources added below ───────────────────────────
+    # src/panels/entity_list.cpp
+    # src/panels/properties_grid.cpp
+    # src/panels/event_editor.cpp
+    # src/mcp/mcp_server.cpp
+    # src/mcp/tools/ecs_tools.cpp
+    # src/mcp/tools/lua_tools.cpp
+    # src/mcp/tools/world_tools.cpp
+)
+
+# ── Include paths ────────────────────────────────────────────
+target_include_directories(mad_editor
+    PRIVATE
+        src
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+)
+
+# ── Dependencies ─────────────────────────────────────────────
+target_link_libraries(mad_editor
+    PRIVATE
+        beigebox_engine
+        SDL2::SDL2
+        OpenGL::GL
+)
