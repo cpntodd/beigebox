@@ -34,6 +34,9 @@ _deps/
 .DS_Store
 .fleet/
 
+# ImGui layout cache (machine-specific)
+imgui.ini
+
 # ── Project-Specific ─────────────────────────────────────────
 # Generated map files
 *.ogm

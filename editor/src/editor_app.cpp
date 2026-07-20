@@ -25,10 +25,12 @@
 #include "mcp/tool_registry.h"
 #include "mcp/tools.h"
 #include "mcp/json_rpc.h"
+#include "mcp/llm_client.h"
 #include "panels/entity_list.h"
 #include "panels/ai_chat.h"
 #include "panels/properties_grid.h"
 #include "panels/event_editor.h"
+#include "menu_bar.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -105,6 +107,22 @@ int main(int argc, char* argv[])
         aiChat.AppendMessage("system", "[JSON-RPC] " + msg);
     });
 
+    // AI LLM Client
+    beigebox::LlmClient llmClient;
+    llmClient.BuildSystemPrompt(tools);
+
+    // ── Main Menu Bar ────────────────────────────────────────
+    bool running = true;
+
+    beigebox::MainMenuBar menuBar(ecs, lua, tools, llmClient);
+    menuBar.onQuit = [&]() { running = false; };
+    menuBar.onGenerateMap = [&]() {
+        aiChat.AppendMessage("system", "Map generation triggered. Use /generate_map tool.");
+    };
+    menuBar.onExportGame = [&]() {
+        aiChat.AppendMessage("system", "Export dialog opened from menu.");
+    };
+
     // ── Seed: spawn a demo entity for the user to play with ─
     auto demoEntity = ecs.create();
     ecs.emplace<beigebox::Transform>(demoEntity,
@@ -131,7 +149,6 @@ int main(int argc, char* argv[])
         "     /write_script entity=1 event=OnInit code=\"function OnInit(id) Transform.SetPosition(id, 10*256, 3*256) end\"\n");
 
     // ── Main Editor Loop ────────────────────────────────────
-    bool running = true;
     while (running)
     {
         SDL_Event event;
@@ -146,9 +163,10 @@ int main(int argc, char* argv[])
                 running = false;
         }
 
-        // ── ECS Tick — systems + Lua events ──────────────────
-        beigebox::TickSystems(ecs);
-        thawGrid.Tick();
+        // ── Editor Panels ────────────────────────────────────
+        menuBar.Draw();
+
+        ImGui::DockSpaceOverViewport(0, ImGui::GetMainViewport());
 
         ecs.view<entt::entity>().each([&](entt::entity entity) {
             if (lua.HasScript(entity, "OnTick"))

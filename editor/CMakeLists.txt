@@ -21,6 +21,7 @@ set(IMGUI_SOURCES
 
 add_executable(mad_editor
     src/editor_app.cpp
+    src/menu_bar.cpp
     src/mcp/tool_registry.cpp
     src/mcp/tools.cpp
     src/mcp/json_rpc.cpp
