@@ -54,7 +54,6 @@ public:
     int ScreenHeight() const { return screenH_; }
 
 private:
-    SDL_GLContext glContext_ = nullptr;
     int screenW_ = 0;
     int screenH_ = 0;
 

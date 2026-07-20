@@ -87,15 +87,6 @@ bool Renderer::Init(SDL_Window* window)
 {
     SDL_GL_GetDrawableSize(window, &screenW_, &screenH_);
 
-    glContext_ = SDL_GL_CreateContext(window);
-    if (!glContext_)
-    {
-        SDL_Log("Renderer: SDL_GL_CreateContext failed: %s", SDL_GetError());
-        return false;
-    }
-
-    SDL_GL_MakeCurrent(window, glContext_);
-
     // ── Compile shaders ─────────────────────────────────────
     shaderProgram_ = CreateShaderProgram(kVertexShader, kFragmentShader);
     if (!shaderProgram_)
@@ -124,11 +115,6 @@ void Renderer::Shutdown()
     if (thawGradientTex_) { glDeleteTextures(1, &thawGradientTex_); thawGradientTex_ = 0; }
     if (thawShaderProgram_) { glDeleteProgram(thawShaderProgram_); thawShaderProgram_ = 0; }
     if (shaderProgram_) { glDeleteProgram(shaderProgram_); shaderProgram_ = 0; }
-    if (glContext_)
-    {
-        SDL_GL_DeleteContext(glContext_);
-        glContext_ = nullptr;
-    }
 }
 
 void Renderer::BeginFrame()

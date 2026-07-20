@@ -46,9 +46,17 @@ int main(int argc, char* argv[])
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) { SDL_Log("Window failed: %s", SDL_GetError()); SDL_Quit(); return EXIT_FAILURE; }
 
+    // ── GL Context ─────────────────────────────────────────
+    SDL_GLContext glCtx = SDL_GL_CreateContext(window);
+    if (!glCtx) {
+        SDL_Log("SDL_GL_CreateContext failed: %s", SDL_GetError());
+        SDL_DestroyWindow(window); SDL_Quit(); return EXIT_FAILURE;
+    }
+    SDL_GL_MakeCurrent(window, glCtx);
+
     // ── Renderer ────────────────────────────────────────────
     beigebox::Renderer renderer;
-    if (!renderer.Init(window)) { SDL_DestroyWindow(window); SDL_Quit(); return EXIT_FAILURE; }
+    if (!renderer.Init(window)) { SDL_GL_DeleteContext(glCtx); SDL_DestroyWindow(window); SDL_Quit(); return EXIT_FAILURE; }
 
     // ── ECS + Lua + Thaw ────────────────────────────────────
     entt::registry ecs;
@@ -295,6 +303,7 @@ int main(int argc, char* argv[])
     // ── Shutdown ─────────────────────────────────────────────
     lua.Shutdown();
     renderer.Shutdown();
+    SDL_GL_DeleteContext(glCtx);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return EXIT_SUCCESS;
