@@ -485,7 +485,7 @@ void LuaBridge::RegisterFactoryAPI()
                 registry_->emplace<HeatSource>(entity,
                     FixedPoint::FromInt(3),    // radius
                     FixedPoint::FromInt(10),   // intensity
-                    0); // sourceId assigned by ThawGrid
+                    0u); // sourceId assigned by ThawGrid
             }
 
             return static_cast<int>(EntityToID(entity));
