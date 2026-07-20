@@ -12,6 +12,7 @@
 #include "beigebox/world/map_generator.h"
 #include "beigebox/world/thaw_grid.h"
 #include "beigebox/render/sprite_registry.h"
+#include "undo/undo_manager.h"
 #include "panels/ai_chat.h"
 
 #include <SDL2/SDL.h>
@@ -169,8 +170,18 @@ void MainMenuBar::DrawEditMenu()
 {
     if (ImGui::BeginMenu("Edit"))
     {
-        ImGui::MenuItem("Undo", "Ctrl+Z", false, false);
-        ImGui::MenuItem("Redo", "Ctrl+Y", false, false);
+        bool canUndo = undoManager_ && undoManager_->CanUndo();
+        bool canRedo = undoManager_ && undoManager_->CanRedo();
+
+        std::string undoLabel = "Undo";
+        std::string redoLabel = "Redo";
+        if (canUndo) undoLabel += " — " + undoManager_->UndoDescription();
+        if (canRedo) redoLabel += " — " + undoManager_->RedoDescription();
+
+        if (ImGui::MenuItem(undoLabel.c_str(), "Ctrl+Z", false, canUndo))
+            undoManager_->Undo();
+        if (ImGui::MenuItem(redoLabel.c_str(), "Ctrl+Y", false, canRedo))
+            undoManager_->Redo();
         ImGui::Separator();
         ImGui::MenuItem("Cut", "Ctrl+X", false, false);
         ImGui::MenuItem("Copy", "Ctrl+C", false, false);

@@ -33,6 +33,7 @@
 #include "panels/event_editor.h"
 #include "panels/asset_browser.h"
 #include "panels/event_debugger.h"
+#include "undo/undo_manager.h"
 #include "menu_bar.h"
 
 #include <cstdio>
@@ -124,6 +125,7 @@ int main(int argc, char* argv[])
     beigebox::PropertiesGrid  propGrid(ecs);
     beigebox::EventEditor     eventEditor(ecs, lua);
     beigebox::EventDebugger   eventDebugger(ecs, lua);
+    beigebox::UndoManager     undoManager;
 
     // JSON-RPC server — logs through the AI Chat panel
     beigebox::JsonRpcServer jsonRpc(tools);
@@ -146,6 +148,7 @@ int main(int argc, char* argv[])
     eventDebugger.SetAIChat(&aiChat);
     menuBar.SetThawGrid(&thawGrid);
     menuBar.SetSpriteRegistry(&spriteRegistry);
+    menuBar.SetUndoManager(&undoManager);
     menuBar.onQuit = [&]() { running = false; };
     menuBar.onNewProject = [&]() {
         // Clear ECS and reset to default
@@ -215,6 +218,16 @@ int main(int argc, char* argv[])
                 && event.window.event == SDL_WINDOWEVENT_CLOSE
                 && event.window.windowID == SDL_GetWindowID(window))
                 running = false;
+
+            // ── Undo/Redo shortcuts ──────────────────────────
+            if (event.type == SDL_KEYDOWN)
+            {
+                bool ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
+                if (ctrl && event.key.keysym.sym == SDLK_z)
+                    undoManager.Undo();
+                if (ctrl && event.key.keysym.sym == SDLK_y)
+                    undoManager.Redo();
+            }
         }
 
         // ── ECS Tick (game logic) ───────────────────────────

@@ -19,6 +19,7 @@ class LlmClient;
 class AIChatPanel;
 class ThawGrid;
 class SpriteRegistry;
+class UndoManager;
 
 class MainMenuBar
 {
@@ -31,6 +32,7 @@ public:
     void SetAIChat(AIChatPanel* chat) { aiChat_ = chat; }
     void SetThawGrid(ThawGrid* grid) { thawGrid_ = grid; }
     void SetSpriteRegistry(SpriteRegistry* reg) { spriteReg_ = reg; }
+    void SetUndoManager(UndoManager* um) { undoManager_ = um; }
     void SetSelectedEntity(entt::entity e) { selectedEntity_ = e; }
     void SetProjectPath(const std::string& p) { projectPath_ = p; }
 
@@ -78,6 +80,7 @@ private:
     AIChatPanel*     aiChat_    = nullptr;
     SpriteRegistry*  spriteReg_ = nullptr;
     ThawGrid*        thawGrid_  = nullptr;
+    UndoManager*     undoManager_ = nullptr;
     entt::entity     selectedEntity_ = entt::null;
     std::string      projectPath_    = "untitled.madproj";
 

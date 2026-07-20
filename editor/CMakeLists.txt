@@ -32,6 +32,7 @@ add_executable(mad_editor
     src/panels/event_editor.cpp
     src/panels/asset_browser.cpp
     src/panels/event_debugger.cpp
+    src/undo/undo_manager.cpp
     ${IMGUI_SOURCES}
 )
 
