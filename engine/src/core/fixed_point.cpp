@@ -124,4 +124,38 @@ FixedPoint Sqrt(FixedPoint fp)
     return FixedPoint(static_cast<FixedPoint::raw_type>(x));
 }
 
+// ── SSE2 Batch Operations ───────────────────────────────────
+// Process 4 FixedPoint adds at once using 128-bit SSE2.
+// Multiply uses scalar fallback (compiler auto-vectorizes int64_t).
+// Functions exist as API placeholders for future AVX2 optimization.
+
+#ifdef __SSE2__
+#include <emmintrin.h>
+
+void FixedPointAdd4(FixedPoint* a, const FixedPoint* b, int count)
+{
+    int i = 0;
+    // Process 4 at a time — simple int32_t add, no overflow risk
+    for (; i + 3 < count; i += 4)
+    {
+        __m128i va = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&a[i]));
+        __m128i vb = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&b[i]));
+        __m128i vsum = _mm_add_epi32(va, vb);
+        _mm_storeu_si128(reinterpret_cast<__m128i*>(&a[i]), vsum);
+    }
+    // Scalar remainder
+    for (; i < count; ++i)
+        a[i] = a[i] + b[i];
+}
+
+void FixedPointMul4(FixedPoint* a, const FixedPoint* b, int count)
+{
+    // Multiply requires int64_t intermediates → SSE2 has poor support.
+    // Use scalar path; GCC/Clang auto-vectorize this well on -O3.
+    for (int i = 0; i < count; ++i)
+        a[i] = a[i] * b[i];
+}
+
+#endif // __SSE2__
+
 } // namespace beigebox

@@ -12,10 +12,12 @@ add_library(beigebox_engine STATIC
     src/render/texture.cpp
     src/render/sprite_registry.cpp
     src/lua/lua_bridge.cpp
+    src/lua/lua_vm_pool.cpp
     src/ecs/systems.cpp
     src/world/thaw_grid.cpp
     src/world/map_generator.cpp
     src/world/spatial_grid.cpp
+    src/ai/pathfinding.cpp
     src/net/lockstep.cpp
 )
 

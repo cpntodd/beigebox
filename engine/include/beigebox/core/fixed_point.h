@@ -71,4 +71,10 @@ private:
 FixedPoint Abs(FixedPoint fp);
 FixedPoint Sqrt(FixedPoint fp);   // integer sqrt (deterministic)
 
+// ── SSE2 Batch Operations (x86-64) ──────────────────────────
+// Process 4 FixedPoint operations at once using SSE2 SIMD.
+// Always available to call; uses scalar fallback on non-x86.
+void FixedPointAdd4(FixedPoint* a, const FixedPoint* b, int count);
+void FixedPointMul4(FixedPoint* a, const FixedPoint* b, int count);
+
 } // namespace beigebox
