@@ -154,6 +154,7 @@ void MenuBuilder::DrawPalette() {
             int ti = (int)t;
             ImGui::SetDragDropPayload("MENU_WIDGET_TYPE", &ti, sizeof(ti));
             ImGui::Text("%s", WidgetTypeName(t));
+            Log(std::string("Drag started: ") + WidgetTypeName(t));
             ImGui::EndDragDropSource();
         }
         ImGui::PopID();
@@ -202,21 +203,14 @@ void MenuBuilder::DrawCanvas() {
     if (showSnapGuides_) DrawSnapGuides();
     if (marqueeSelect_) DrawMarqueeRect();
 
+    // Drag-drop target — accept widgets dropped from palette
     if (ImGui::BeginDragDropTarget()) {
-        // Highlight canvas while hovering a valid payload
-        const ImGuiPayload* preview = ImGui::AcceptDragDropPayload("MENU_WIDGET_TYPE", ImGuiDragDropFlags_AcceptBeforeDelivery);
-        if (preview) {
-            dl->AddRect(ImVec2(canvasOffsetX_, canvasOffsetY_),
-                ImVec2(canvasOffsetX_ + canvasW_, canvasOffsetY_ + canvasH_),
-                IM_COL32(100, 200, 255, 100), 0, 0, 3.0f);
-        }
         const ImGuiPayload* p = ImGui::AcceptDragDropPayload("MENU_WIDGET_TYPE");
         if (p) {
             int ti = *(const int*)p->Data;
             ImVec2 m = ImGui::GetMousePos();
             int cx = (int)((m.x - canvasOffsetX_) / canvasScale_);
             int cy = (int)((m.y - canvasOffsetY_) / canvasScale_);
-            Log(std::string("Drop: ") + WidgetTypeName((WidgetType)ti) + " at (" + std::to_string(cx) + "," + std::to_string(cy) + ")");
             AddWidget((WidgetType)ti, cx, cy);
         }
         ImGui::EndDragDropTarget();
@@ -226,7 +220,8 @@ void MenuBuilder::DrawCanvas() {
 
     ImVec2 ip(canvasOffsetX_ + 4, canvasOffsetY_ + canvasH_ - 18);
     dl->AddText(ip, IM_COL32(100, 100, 120, 200),
-        ("Canvas: " + std::to_string(screen_.screenW) + "x" + std::to_string(screen_.screenH)).c_str());
+        (std::to_string(screen_.screenW) + "x" + std::to_string(screen_.screenH)
+         + " | " + std::to_string(screen_.widgets.size()) + " widgets").c_str());
     ImGui::EndChild();
 }
 
@@ -429,7 +424,7 @@ void MenuBuilder::StartResizing(int, int h, int mx, int my) {
 // ═══════════════════════════════════════════════════════════
 
 void MenuBuilder::DrawHierarchyTree() {
-    ImGui::TextDisabled("Hierarchy"); ImGui::Separator();
+    ImGui::TextDisabled("Hierarchy (%zu widgets)", screen_.widgets.size()); ImGui::Separator();
     ImGui::BeginChild("##hierList", ImVec2(0, std::max(50.f, ImGui::GetContentRegionAvail().y - 105)), false);
     auto roots = GetChildrenOf(-1);
     for (int idx : roots) DrawHierarchyNode(idx, 0);
